@@ -184,6 +184,24 @@ function initAudio() {
   if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   if (AC && AC.state === 'suspended') AC.resume();
 }
+// ---------- background music (boss.m4a) ----------
+let music = null;
+function startMusic() {
+  if (!music) {
+    music = new Audio('boss.m4a');
+    music.loop = true;
+    music.volume = 0.5;
+  }
+  try {
+    music.currentTime = 0;   // restart from the top each run
+    music.play().catch(() => {});
+  } catch (e) {}
+}
+function pauseMusic(pause = true) {
+  if (!music) return;
+  if (pause) music.pause();
+  else music.play().catch(() => {});
+}
 function tone(freq, dur, type = 'square', vol = 0.12, slide = 0, delay = 0) {
   if (!AC) return;
   const t0 = AC.currentTime + delay;
@@ -366,6 +384,7 @@ addEventListener('touchcancel', e => {
 function togglePause() {
   paused = !paused;
   document.getElementById('pauseOverlay').classList.toggle('hidden', !paused);
+  pauseMusic(paused);   // music follows the pause state
 }
 
 // ============================================================
@@ -375,6 +394,7 @@ const $ = id => document.getElementById(id);
 
 function startGame() {
   initAudio();
+  startMusic();   // background music starts with the run
   resetGame();
   state = 'playing';
   $('startScreen').classList.add('hidden');
@@ -386,6 +406,7 @@ function startGame() {
 
 function gameOver() {
   state = 'gameover';
+  pauseMusic(true);   // stop the music when the run ends
   $('hud').classList.add('hidden');
   const m = Math.floor(time / 60), s = Math.floor(time % 60);
   $('goStats').innerHTML =
