@@ -21,7 +21,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0710;font-family:
 #timer.warn{color:#ff7b6b;text-shadow:0 0 14px rgba(255,80,60,.8)}
 #scorebox{right:12px;top:12px;text-align:right;padding:8px 14px;font-size:13px;line-height:1.7}
 #scorebox b{color:#ffd27a}
-#weapons{position:absolute;left:12px;bottom:12px;display:flex;gap:8px}
+#weapons{display:none}
+#weapons.show{position:absolute;left:50%;top:50%;transform:translate(-50%,70px);display:flex;gap:8px}
 .wchip{width:52px;background:rgba(15,10,24,.65);border:1px solid rgba(150,90,255,.35);border-radius:8px;padding:5px 0 4px;text-align:center}
 .wchip .ic{font-size:22px;line-height:1.1}
 .wchip .pips{display:flex;gap:3px;justify-content:center;margin-top:3px}
@@ -40,7 +41,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0710;font-family:
 #tbtn-mute{top:66px}
 body.touch .tbtn{display:block}
 body.touch #scorebox{right:74px}
-body.touch #weapons{bottom:150px}
 body.touch #hint,body.touch #mute{display:none}
 .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(6,4,12,.72);z-index:10}
 .hidden{display:none!important}
@@ -608,6 +608,7 @@ function updateHud(){
     bb.style.display="block";
     $("bossfill").style.width=Math.max(0,S.bossRef.hp/S.bossRef.maxHp*100)+"%";
   } else bb.style.display="none";
+  $("weapons").classList.toggle("show",S.mode==="paused");
 }
 function rollChoices(){
   const pool=[];
