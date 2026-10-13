@@ -32,12 +32,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#0a0710;font-family:
 #bosswrap{height:12px;background:rgba(20,12,34,.85);border:1px solid rgba(190,80,255,.5);border-radius:6px;overflow:hidden}
 #bossfill{height:100%;width:100%;background:linear-gradient(90deg,#6a1fb0,#c95cff)}
 #hint{position:absolute;right:14px;bottom:12px;font-size:11px;color:rgba(220,200,255,.55);letter-spacing:1px}
-#joy{position:fixed;left:24px;bottom:24px;width:112px;height:112px;border-radius:50%;background:rgba(15,10,24,.4);border:2px solid rgba(150,90,255,.45);pointer-events:auto;touch-action:none;z-index:6;display:none}
-#joystick{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:rgba(176,124,255,.55);border:2px solid rgba(220,180,255,.9);transform:translate(-50%,-50%);pointer-events:none}
+#joy{position:fixed;left:0;top:0;width:120px;height:120px;border-radius:50%;background:rgba(15,10,24,.4);border:2px solid rgba(150,90,255,.45);pointer-events:none;touch-action:none;z-index:6;display:none}
+#joy.on{display:block}
+#joystick{position:absolute;left:50%;top:50%;width:50px;height:50px;border-radius:50%;background:rgba(176,124,255,.55);border:2px solid rgba(220,180,255,.9);transform:translate(-50%,-50%);pointer-events:none}
 .tbtn{position:fixed;right:12px;width:46px;height:46px;border-radius:50%;background:rgba(15,10,24,.7);border:1px solid rgba(150,90,255,.45);color:#c9a6ff;font-size:18px;pointer-events:auto;touch-action:none;z-index:6;display:none}
 #tbtn-pause{top:12px}
 #tbtn-mute{top:66px}
-body.touch #joy{display:block}
 body.touch .tbtn{display:block}
 body.touch #scorebox{right:74px}
 body.touch #weapons{bottom:150px}
@@ -700,7 +700,7 @@ function showMenu(){
   showScreen(`<h1 class="title"><span class="vamp">VAMPYRE</span> SURVIVORS</h1>
     <div class="sub">survive 15 minutes against the horde</div>
     <div class="controls">
-      ${touch?"<b>JOYSTICK</b> move":"<b>W A S D</b> / <b>ARROWS</b> move"} &nbsp;·&nbsp; your weapons attack automatically<br>
+      ${touch?"<b>TOUCH + HOLD</b> anywhere — joystick follows your finger":"<b>W A S D</b> / <b>ARROWS</b> move"} &nbsp;·&nbsp; your weapons attack automatically<br>
       collect <b style="color:#9fe0ff">◆ XP gems</b> to level up &nbsp;·&nbsp; pick 1 of 3 upgrades<br>
       ${touch?"<b>⏸</b> pause &nbsp;·&nbsp; <b>🔊</b> mute":"<b>P</b> pause &nbsp;·&nbsp; <b>M</b> mute"} &nbsp;·&nbsp; beware the <b style="color:#d78cff">LICH KING</b>
     </div>
@@ -729,20 +729,53 @@ if(("ontouchstart" in window)||navigator.maxTouchPoints>0)document.body.classLis
 (function(){
   if(!("ontouchstart" in window)&&navigator.maxTouchPoints===0)return;
   const joy=$("joy"),stick=$("joystick");
-  let activeId=null,cx=0,cy=0;
-  function center(){const r=joy.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;}
-  function apply(dx,dy){
-    const max=joy.offsetWidth/2-12,d=Math.hypot(dx,dy);
+  const R=60; // joystick base radius (px) — keep in sync with #joy CSS (120px)
+  let activeId=null,ox=0,oy=0; // active finger id + joystick base center
+  function place(x,y){
+    const m=R+6;
+    ox=clamp(x,m,innerWidth-m);
+    oy=clamp(y,m,innerHeight-m);
+    joy.style.left=(ox-R)+"px";
+    joy.style.top=(oy-R)+"px";
+    joy.classList.add("on");
+  }
+  function apply(x,y){
+    let dx=x-ox,dy=y-oy;
+    const max=R-12,d=Math.hypot(dx,dy);
     if(d>max){dx*=max/d;dy*=max/d;}
     stick.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
     const th=max*.35;
     keys["w"]=dy<-th;keys["s"]=dy>th;keys["a"]=dx<-th;keys["d"]=dx>th;
   }
-  function release(e){for(const t of e.changedTouches)if(t.identifier===activeId){activeId=null;stick.style.transform="translate(-50%,-50%)";keys["w"]=keys["s"]=keys["a"]=keys["d"]=false;}}
-  joy.addEventListener("touchstart",e=>{e.preventDefault();center();const t=e.changedTouches[0];activeId=t.identifier;apply(t.clientX-cx,t.clientY-cy);},{passive:false});
-  joy.addEventListener("touchmove",e=>{e.preventDefault();for(const t of e.changedTouches)if(t.identifier===activeId)apply(t.clientX-cx,t.clientY-cy);},{passive:false});
-  joy.addEventListener("touchend",release);
-  joy.addEventListener("touchcancel",release);
+  function release(e){
+    for(const t of e.changedTouches)if(t.identifier===activeId){
+      activeId=null;
+      joy.classList.remove("on");
+      stick.style.transform="translate(-50%,-50%)";
+      keys["w"]=keys["s"]=keys["a"]=keys["d"]=false;
+    }
+  }
+  // floating joystick: appears wherever you touch (not fixed to a corner)
+  document.addEventListener("touchstart",e=>{
+    for(const t of e.changedTouches){
+      if(activeId!==null)continue;               // already steering with another finger
+      if(t.target.closest("button"))continue;    // let buttons (pause/mute/upgrades/start) work
+      if(S.mode!=="playing")continue;            // only steer during gameplay
+      e.preventDefault();
+      activeId=t.identifier;
+      place(t.clientX,t.clientY);
+      apply(t.clientX,t.clientY);
+    }
+  },{passive:false});
+  document.addEventListener("touchmove",e=>{
+    if(activeId===null)return;
+    for(const t of e.changedTouches)if(t.identifier===activeId){
+      e.preventDefault();
+      apply(t.clientX,t.clientY);
+    }
+  },{passive:false});
+  document.addEventListener("touchend",release);
+  document.addEventListener("touchcancel",release);
   $("tbtn-pause").addEventListener("click",()=>{if(S.mode==="playing")S.mode="paused";else if(S.mode==="paused")S.mode="playing";});
   $("tbtn-mute").addEventListener("click",()=>{
     muted=!muted;$("mute").textContent=muted?"M muted":"M mute";
