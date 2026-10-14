@@ -37,14 +37,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#08060e;font-family:
 #bosswrap{height:12px;background:rgba(20,12,34,.85);border:1px solid rgba(190,80,255,.5);border-radius:6px;overflow:hidden}
 #bossfill{height:100%;width:100%;background:linear-gradient(90deg,#6a1fb0,#c95cff)}
 #hint{position:absolute;right:14px;bottom:12px;font-size:11px;color:rgba(220,200,255,.5);letter-spacing:1px}
-#joy{position:fixed;left:0;top:0;width:124px;height:124px;border-radius:50%;background:rgba(14,9,22,.38);border:2px solid rgba(150,90,255,.45);pointer-events:none;touch-action:none;z-index:6;display:none}
-#joystick{position:absolute;left:50%;top:50%;width:52px;height:52px;border-radius:50%;background:rgba(176,124,255,.5);border:2px solid rgba(220,180,255,.9);transform:translate(-50%,-50%);pointer-events:none}
+#joy{position:fixed;left:0;top:0;width:150px;height:150px;border-radius:50%;background:rgba(14,9,22,.38);border:2px solid rgba(150,90,255,.45);pointer-events:none;touch-action:none;z-index:6;display:none}
+#joystick{position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;background:rgba(176,124,255,.5);border:2px solid rgba(220,180,255,.9);transform:translate(-50%,-50%);pointer-events:none}
 .tbtn{position:fixed;right:12px;width:46px;height:46px;border-radius:50%;background:rgba(14,9,22,.72);border:1px solid rgba(150,90,255,.45);color:#c9a6ff;font-size:18px;pointer-events:auto;touch-action:none;z-index:7;display:none}
 #tbtn-pause{top:14px}
-#tbtn-mute{top:68px}
-body.touch .tbtn{display:block}
-body.touch #scorebox{right:70px}
-body.touch #hint{display:none}
+#tbtn-mute{top:70px}
+body.touch .tbtn{display:block;width:54px;height:54px;font-size:22px;right:10px}
+body.touch #scorebox{right:74px}
+body.touch #hint{font-size:12px;opacity:.85}
 .overlay{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
 .overlay.hidden{display:none}
 .overlay .t{font-size:min(46px,8vw);font-weight:800;letter-spacing:3px;color:#f0e6ff;text-shadow:0 0 22px rgba(150,80,255,.75);margin-bottom:14px}
@@ -52,6 +52,8 @@ body.touch #hint{display:none}
 #choices{display:flex;gap:14px;margin-top:22px;flex-wrap:wrap;justify-content:center}
 .card{width:186px;min-height:206px;background:rgba(28,17,50,.93);border:2px solid rgba(160,100,255,.4);border-radius:12px;padding:16px 14px;cursor:pointer;pointer-events:auto;text-align:center;transition:transform .12s,border-color .12s,box-shadow .12s}
 .card:hover{transform:translateY(-6px);border-color:#c98cff;box-shadow:0 10px 30px rgba(160,80,255,.4)}
+.card:active{transform:translateY(2px) scale(.97);border-color:#c98cff;box-shadow:0 4px 14px rgba(160,80,255,.35)}
+
 .card .ic{font-size:40px}
 .card .nm{margin-top:8px;font-size:15px;font-weight:800;color:#efe2ff}
 .card .lv{font-size:11px;color:#9fe0ff;margin-top:2px;letter-spacing:1px}
@@ -65,6 +67,8 @@ body.touch #hint{display:none}
 #shoprow{display:flex;gap:14px;margin-top:20px;flex-wrap:wrap;justify-content:center}
 .shopcard{width:170px;min-height:150px;background:rgba(28,17,50,.93);border:2px solid rgba(120,200,160,.35);border-radius:12px;padding:14px 12px;cursor:pointer;pointer-events:auto;text-align:center}
 .shopcard:hover{transform:translateY(-6px);border-color:#8fe6b4;box-shadow:0 10px 26px rgba(90,220,150,.35)}
+.shopcard:active{transform:translateY(2px) scale(.97);border-color:#8fe6b4;box-shadow:0 4px 14px rgba(90,220,150,.3)}
+
 .shopcard .ic{font-size:30px}
 .shopcard .nm{margin-top:6px;font-size:14px;font-weight:800;color:#d9f2e2}
 .shopcard .ds{font-size:11px;color:#93b8a6;margin-top:6px;line-height:1.5}
@@ -812,12 +816,14 @@ addEventListener("keydown",e=>{
   if(S.mode==="over"||S.mode==="win"){if(e.key==="Enter")restart();}
 });
 addEventListener("keyup",e=>{keys[e.key.length===1?e.key.toLowerCase():e.key]=false;});
-addEventListener("pointerdown",e=>{
-  if(!e.pointerType||e.pointerType==="mouse")return;
-  touchMode=true;
+function touchUI(){
   document.body.classList.add("touch");
-  $("hint").style.display="none";
-});
+  $("hint").textContent="drag anywhere to move · tap cards · ⏸ pause";
+  $("mute").textContent="tap 🔊 to mute";
+  const ms=$("menu").querySelector(".sub"),ls=$("levelup").querySelector(".sub");
+  if(ms)ms.innerHTML="survive 15:00 · your weapons fire themselves · you only steer<br>drag anywhere to move · tap a card to pick";
+  if(ls)ls.innerHTML="tap a card to pick one upgrade";
+}
 function togglePause(){
   if(S.mode!=="playing"&&S.mode!=="levelup")return;
   paused=!paused;
@@ -828,28 +834,39 @@ function toggleMute(){
   $("mute").textContent=muted?"M muted":"M mute";
   $("tbtn-mute").textContent=muted?"🔇":"🔊";
 }
-let joyVec={x:0,y:0};
+let joyVec={x:0,y:0},joyId=null;
 const joyEl=$("joy"),joyKnob=$("joystick");
-joyEl.addEventListener("pointerdown",e=>{
-  touchMode=true;
-  document.body.classList.add("touch");
-  $("hint").style.display="none";
+const joySize=150,joyMax=44,joyDead=9;
+function joyPlace(x,y){
+  const h=joySize/2+4;
+  const cx=Math.max(h,Math.min(W-h,x)),cy=Math.max(h,Math.min(H-h,y));
+  joyEl.style.left=(cx-joySize/2)+"px";joyEl.style.top=(cy-joySize/2)+"px";
+  joyBase={x:cx,y:cy};
   joyEl.style.display="block";
-  const r=joyEl.getBoundingClientRect();
-  joyBase={x:r.left+r.width/2,y:r.top+r.height/2};
+  joyKnob.style.transform="translate(-50%,-50%)";
+}
+function joyRelease(){joyBase=null;joyId=null;joyVec.x=0;joyVec.y=0;joyEl.style.display="none";joyKnob.style.transform="translate(-50%,-50%)";}
+addEventListener("pointerdown",e=>{
+  if(e.pointerType==="mouse")return;
+  touchMode=true;
+  if(!document.body.classList.contains("touch"))touchUI();
+  const t=e.target;
+  if(t&&(t.tagName==="BUTTON"||t.classList.contains("tbtn")||t.classList.contains("card")||t.classList.contains("shopcard")))return;
+  if(joyId!==null&&e.pointerId!==joyId)return;
+  joyId=e.pointerId;
+  joyPlace(e.clientX,e.clientY);
 });
-joyEl.addEventListener("pointermove",e=>{
-  if(!joyBase)return;
-  const r=joyEl.getBoundingClientRect();
-  const wv=r.width||joyEl.width||124;
-  const dx=e.clientX-joyBase.x,dy=e.clientY-joyBase.y;
-  const m=Math.hypot(dx,dy),max=40;
-  const k=m>max?max/m:1;
-  joyKnob.style.transform=`translate(${-50+(-dx*k/wv)*100}%, -50%)`;
-  joyVec.x=dx/(max||1);joyVec.y=dy/(max||1);
-  if(m>max){joyKnob.style.transform=`translate(${-50+(-dx*max/m/wv)*100}%, -50%)`;}
+addEventListener("pointermove",e=>{
+  if(joyId===null||e.pointerId!==joyId||!joyBase)return;
+  if(joyBase.x>W-70||joyBase.y>H-70||joyBase.x<70||joyBase.y<70){joyPlace(e.clientX,e.clientY);return;}
+  const dx=e.clientX-joyBase.x,dy=e.clientY-joyBase.y,m=Math.hypot(dx,dy);
+  if(m<joyDead){joyVec.x=0;joyVec.y=0;joyKnob.style.transform="translate(-50%,-50%)";return;}
+  const k=m>joyMax?joyMax/m:1;
+  joyVec.x=dx*k/joyMax;joyVec.y=dy*k/joyMax;
+  joyKnob.style.transform=`translate(${-50+(dx*k/joySize)*100}%, -50%)`;
 });
-joyEl.addEventListener("pointerup",()=>{joyVec.x=0;joyVec.y=0;joyKnob.style.transform="translate(-50%,-50%)";});
+addEventListener("pointerup",e=>{if(joyId!==null&&e.pointerId===joyId)joyRelease();});
+addEventListener("pointercancel",e=>{if(joyId!==null&&e.pointerId===joyId)joyRelease();});
 function readInput(){
   let ix=0,iy=0;
   if(keys.ArrowLeft||keys.a)ix-=1;
