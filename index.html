@@ -45,6 +45,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#08060e;font-family:
 body.touch .tbtn{display:block;width:54px;height:54px;font-size:22px;right:10px}
 body.touch #scorebox{right:74px}
 body.touch #hint{font-size:12px;opacity:.85}
+#hyper{position:absolute;left:50%;top:96px;transform:translateX(-50%);font-size:12px;font-weight:800;letter-spacing:2px;color:#ffd27a;text-shadow:0 0 12px rgba(255,190,90,.85);background:rgba(14,9,22,.6);border:1px solid rgba(255,190,90,.45);border-radius:8px;padding:4px 14px;display:none;white-space:nowrap}
+body.touch #hyper{top:104px;font-size:14px}
+.card.hyper{border-color:rgba(255,190,90,.75);background:rgba(46,26,20,.93);box-shadow:0 0 18px rgba(255,170,60,.3)}
+.card.hyper .nm{color:#ffd9a0}
+.card.hyper .lv{color:#ffc86a}
+.card.hyper .key{color:#ffe9b0}
 .overlay{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
 .overlay.hidden{display:none}
 .overlay .t{font-size:min(46px,8vw);font-weight:800;letter-spacing:3px;color:#f0e6ff;text-shadow:0 0 22px rgba(150,80,255,.75);margin-bottom:14px}
@@ -90,13 +96,14 @@ body.touch #hint{font-size:12px;opacity:.85}
   <div id="scorebox" class="panel"><div>SCORE <b id="score">0</b></div><div>KILLS <b id="kills">0</b></div><div>GOLD <b id="gold">0</b></div></div>
   <div id="bossbar"><div id="bossname">☠ THE GRAVE KING</div><div id="bosswrap"><div id="bossfill"></div></div></div>
   <div id="chips"></div>
+  <div id="hyper"></div>
   <div id="hint">WASD / ARROWS move · P pause · M mute · 1 2 3 pick card</div>
   <div id="mute">M mute</div>
   <div id="joy"><div id="joystick"></div></div>
   <button class="tbtn" id="tbtn-pause" aria-label="pause">⏸</button>
   <button class="tbtn" id="tbtn-mute" aria-label="mute">🔊</button>
 </div>
-<div id="menu" class="overlay"><div class="t">NIGHTFALL SURVIVORS</div><div class="row" id="charRow"></div><div class="sub">survive 15:00 · your weapons fire themselves · you only steer<br>pick a hunter: click a card or press 1 / 2 / 3</div></div>
+<div id="menu" class="overlay"><div class="t">NIGHTFALL SURVIVORS</div><div class="row" id="charRow"></div><div class="sub">survive 15:00 · your weapons fire themselves · you only steer<br>slay a boss, walk onto its chest for a 1-3 pick treasure haul<br>pick a hunter: click a card or press 1 / 2 / 3</div></div>
 <div id="levelup" class="overlay hidden"><div class="t">LEVEL UP</div><div id="choices"></div><div class="sub">pick one — click a card or press 1 / 2 / 3</div></div>
 <div id="end" class="overlay hidden"><div class="t" id="endTitle">YOU SURVIVED</div><div id="stats"></div><div id="shoprow"></div><div class="sub" id="endSub">spend your gold, then play again</div></div>
 <button class="abtn" id="againBtn">PLAY AGAIN</button>
@@ -157,6 +164,8 @@ function sfx(n){
   else if(n==="boss")tone(60,.7,"sawtooth",.08,-20);
   else if(n==="win")tone(523,.4,"sine",.06,523);
   else if(n==="buy")tone(700,.12,"triangle",.03,300);
+  else if(n==="chest"){tone(520,.09,"triangle",.03,140);tone(790,.14,"triangle",.03,260);}
+  else if(n==="hyper"){tone(360,.55,"sine",.06,980);tone(900,.34,"triangle",.045,1300);}
 }
 let musT=0,musI=0;
 function musicStep(dt){
@@ -173,6 +182,8 @@ function musicStep(dt){
 const WIN_TIME=15*60;          // survive 15 minutes
 const MAX_W=6,MAX_P=6;         // weapon / passive slots
 const BOSS_INTERVAL=60;        // a Lich King rises every minute
+const CHEST_LIFE=75;           // a boss chest sits on the ground this long
+const HYPER_TIME=14,HYPER_MAX_PICKS=3,HYPER_XP=1.6,HYPER_MAG=1.7; // treasure haul window
 
 const WDEF={
   whip:{name:"Crescent Whip",icon:"🌙",kind:"arc",max:8,
@@ -249,7 +260,8 @@ function saveMeta(){try{localStorage.setItem("nightfall_meta_v1",JSON.stringify(
 
 /* ================= state ================= */
 let S=null,player=null,cam={x:0,y:0};
-let enemies=[],bullets=[],foes=[],gems=[],coins=[],parts=[],texts=[],rings=[],slashes=[],bolts=[];
+let boss=null,hyperT=0,hyperPicks=0;
+let enemies=[],bullets=[],foes=[],gems=[],coins=[],chests=[],parts=[],texts=[],rings=[],slashes=[],bolts=[];
 let keys={},deadFlag=false;
 const CELL=80,gmap=new Map();
 const MAX_ENEMIES=240,MAX_FOES=160;
@@ -298,7 +310,8 @@ function resetRun(ci){
   player.hp=player.maxHp;
   S={mode:"playing",time:0,score:0,kills:0,gold:0,shake:0,shakeX:0,shakeY:0,
      spawnT:1.2,burstT:22,bossIdx:0,boss:null,pending:0,level:1,xp:0,need:xpNeedFor(1),charIdx:ci};
-  enemies=[];bullets=[];foes=[];gems=[];coins=[];parts=[];texts=[];rings=[];slashes=[];bolts=[];
+  enemies=[];bullets=[];foes=[];gems=[];coins=[];chests=[];parts=[];texts=[];rings=[];slashes=[];bolts=[];
+  hyperT=0;hyperPicks=0;
   cam.x=player.x-W/2;cam.y=player.y-H/2;
 }
 function spawnPos(){
@@ -350,6 +363,8 @@ function killEnemy(e){
     addText(e.x,e.y-e.r-10,"☠ BANISHED","#ff7bd0",22);
     for(let i=0;i<14;i++)spawnGem(e.x+rand(-40,40),e.y+rand(-40,40),5);
     for(let i=0;i<6;i++)spawnCoin(e.x+rand(-50,50),e.y+rand(-50,50));
+    spawnChest(e.x,e.y+e.r*.25);
+    addText(e.x,e.y+e.r+16,"CHEST DROPPED · GO GET IT","#ffd27a",15);
   }else{
     spawnGem(e.x,e.y,e.xp);
     if(Math.random()<.1)spawnCoin(e.x,e.y);
@@ -360,6 +375,9 @@ function killEnemy(e){
 /* ================= fx + damage helpers ================= */
 function spawnGem(x,y,v){gems.push({x,y,v,life:GEM_LIFE,born:performance.now()});}
 function spawnCoin(x,y){coins.push({x,y,life:40,born:performance.now()});}
+function spawnChest(x,y){
+  chests.push({x,y,r:17,life:CHEST_LIFE,born:performance.now(),anim:rand(0,TAU)});
+}
 function addText(x,y,str,color,size){texts.push({x,y,str,color,size,life:1});}
 function burstParts(x,y,color,n,spread){
   if(parts.length>=260)return;
@@ -647,10 +665,11 @@ function updateProjectiles(dt){
   foes=foes.filter(f=>f.life>0);
 }
 function updatePickups(dt){
+  const mag=player.magnet*(hyperT>0?HYPER_MAG:1);
   for(const g of gems){
     g.life-=dt;
     const d=Math.hypot(g.x-player.x,g.y-player.y);
-    if(d<player.magnet){
+    if(d<mag){
       const a=Math.atan2(player.y-g.y,player.x-g.x);
       const s=Math.max(240,300+d*2);
       g.x+=Math.cos(a)*s*dt;g.y+=Math.sin(a)*s*dt;
@@ -665,13 +684,46 @@ function updatePickups(dt){
   for(const c of coins){
     c.life-=dt;
     const d=Math.hypot(c.x-player.x,c.y-player.y);
-    if(d<player.magnet){
+    if(d<mag){
       const a=Math.atan2(player.y-c.y,player.x-c.x);
       c.x+=Math.cos(a)*360*dt;c.y+=Math.sin(a)*360*dt;
     }
     if(d<player.r+18){c.life=-1;S.gold++;sfx("coin");}
   }
   coins=coins.filter(c=>c.life>0);
+}
+function updateChests(dt){
+  for(const c of chests){
+    c.life-=dt;
+    c.anim+=dt*2.6;
+    const d=Math.hypot(c.x-player.x,c.y-player.y);
+    c.d=d;
+    if(d<player.r+c.r+3){c.life=-1;openChest(c);}
+  }
+  chests=chests.filter(c=>c.life>0);
+}
+function rollHaulPicks(){
+  const r=Math.random();               // 50% one pick · 35% two · 15% three
+  return r<.5?1:r<.85?2:HYPER_MAX_PICKS;
+}
+function openChest(c){
+  const picks=rollHaulPicks();
+  S.shake=Math.max(S.shake,9);
+  sfx("chest");
+  sfx("hyper");
+  addText(c.x,c.y-30,"TREASURE HAUL ×"+picks,"#ffd27a",22);
+  rings.push({x:c.x,y:c.y,r:30,life:.7,max:.7,color:"#ffd27a"});
+  rings.push({x:c.x,y:c.y,r:66,life:1.15,max:1.15,color:"#ff9a3a"});
+  burstParts(c.x,c.y,"#ffd27a",26,260);
+  for(let i=0;i<10;i++)spawnCoin(c.x+rand(-84,84),c.y+rand(-84,84));
+  for(let i=0;i<8;i++)spawnGem(c.x+rand(-72,72),c.y+rand(-72,72),4);
+  hyperT=HYPER_TIME;
+  hyperPicks=picks;
+  S.pending+=picks;
+  if(S.mode==="playing")levelTick();
+}
+function updateHyper(dt){
+  if(hyperT>0)hyperT=Math.max(0,hyperT-dt);
 }
 function updateSpawner(dt){
   S.spawnT-=dt;
@@ -743,7 +795,55 @@ function buildChoices(){
   if(!res.length)res.push({type:"heal",id:"heal",icon:"🩺",name:"Quick Mending",lv:"INSTANT",ds:"Restore 45 HP."});
   return res;
 }
+function hyperChoices(){
+  const evo=[],nw=[],wu=[],pu=[];
+  for(const w of player.weapons){
+    const def=WDEF[w.id];
+    if(evoReady(w)){
+      evo.push({ord:0,ch:{type:"evo",id:w.id,icon:def.evoIcon,name:def.evoName,lv:"MAX · EVOLVE",
+        ds:`${def.name} Lv6 → ${def.evoName}: damage, area and cooldown upgraded.`}});
+      continue;
+    }
+    if(w.evolved||w.lvl>=def.max)continue;
+    wu.push({ord:-w.lvl,ch:{type:"w",id:w.id,icon:def.icon,name:def.name,lv:`Lv ${w.lvl} → ${w.lvl+1}`,
+      ds:`${def.name} Lv${w.lvl} → Lv${w.lvl+1}: more damage${w.lvl===3||w.lvl===7?" and extra projectiles":""}.`}});
+  }
+  if(wCount()<MAX_W){
+    const free=[];
+    for(const k in WDEF)if(wLevel(k)===0)free.push(k);
+    shuffle(free);
+    for(const k of free){
+      const d=WDEF[k];
+      nw.push({ord:0,ch:{type:"new",id:k,icon:d.icon,name:d.name,lv:"NEW WEAPON",
+        ds:`Add ${d.name} Lv1 — a brand new way to kill.`}});
+    }
+  }
+  for(const k in PDEF){
+    const d=PDEF[k],lv=player.pLv[k]||0;
+    if(lv>=d.max)continue;
+    if(pCount()>=MAX_P&&lv===0)continue;
+    pu.push({ord:-lv,ch:{type:"p",id:k,icon:d.icon,name:d.name,lv:`Lv ${lv} → ${lv+1}`,
+      ds:`${d.name} Lv${lv} → Lv${lv+1}: ${d.desc(lv+1)}.`}});
+  }
+  shuffle(evo);shuffle(nw);
+  wu.sort((a,b)=>a.ord-b.ord);
+  pu.sort((a,b)=>a.ord-b.ord);
+  const out=[];
+  for(const x of evo)out.push(x.ch);
+  for(const x of nw)out.push(x.ch);
+  for(const x of wu)out.push(x.ch);
+  for(const x of pu)out.push(x.ch);
+  const res=out.slice(0,3);
+  while(res.length<3)res.push({type:"heal",id:"heal",icon:"🩺",name:"Quick Mending",lv:"INSTANT",ds:"Restore 45 HP."});
+  for(const r of res)r.hyper=true;
+  return res;
+}
+function nextChoices(){
+  if(hyperPicks>0)return hyperChoices();
+  return buildChoices();
+}
 function applyChoice(c){
+  if(c.hyper&&hyperPicks>0)hyperPicks--;
   if(c.type==="evo"){
     for(const w of player.weapons)if(w.id===c.id){w.evolved=true;break;}
     sfx("evo");
@@ -770,7 +870,7 @@ function showChoices(){
   for(let i=0;i<list.length;i++){
     const c=list[i];
     const d=document.createElement("div");
-    d.className="card"+(c.type==="evo"?" evo":"");
+    d.className="card"+(c.type==="evo"?" evo":"")+(c.hyper?" hyper":"");
     d.innerHTML=`<div class="ic">${c.icon}</div><div class="nm">${c.name}</div><div class="lv">${c.lv}</div><div class="ds">${c.ds}</div><div class="key">press ${i+1}</div>`;
     d.addEventListener("click",()=>chooseIndex(i));
     box.appendChild(d);
@@ -782,7 +882,7 @@ function chooseIndex(i){
   applyChoice(S.choices[i]);
   S.pending--;
   if(S.pending>0){
-    S.choices=buildChoices();
+    S.choices=nextChoices();
     showChoices();
   }else{
     $("levelup").classList.add("hidden");
@@ -790,12 +890,12 @@ function chooseIndex(i){
   }
 }
 function levelTick(){
-  S.choices=buildChoices();
+  S.choices=nextChoices();
   showChoices();
   S.mode="levelup";
 }
 function addXp(v){
-  S.xp+=v;
+  S.xp+=v*(hyperT>0?HYPER_XP:1);
   while(S.xp>=S.need){
     S.xp-=S.need;
     S.level++;
@@ -821,7 +921,7 @@ function touchUI(){
   $("hint").textContent="drag anywhere to move · tap cards · ⏸ pause";
   $("mute").textContent="tap 🔊 to mute";
   const ms=$("menu").querySelector(".sub"),ls=$("levelup").querySelector(".sub");
-  if(ms)ms.innerHTML="survive 15:00 · your weapons fire themselves · you only steer<br>drag anywhere to move · tap a card to pick";
+  if(ms)ms.innerHTML="survive 15:00 · your weapons fire themselves · you only steer<br>slay a boss, walk onto its chest for a 1-3 pick haul · tap a card to pick";
   if(ls)ls.innerHTML="tap a card to pick one upgrade";
 }
 function togglePause(){
@@ -1065,6 +1165,62 @@ function drawPickups(){
     ctx.fill();
   }
 }
+function drawChests(){
+  for(const c of chests){
+    const x=c.x-cam.x,y=c.y-cam.y;
+    if(x<-40||y<-40||x>W+40||y>H+40){
+      chestArrow(x,y);
+      continue;
+    }
+    const bob=Math.sin(c.anim)*2.4;
+    const pulse=.5+.5*Math.sin(c.anim*1.7);
+    const g=ctx.createRadialGradient(x,y,0,x,y,34+pulse*10);
+    g.addColorStop(0,"rgba(255,205,110,.34)");
+    g.addColorStop(1,"rgba(255,170,60,0)");
+    ctx.fillStyle=g;
+    ctx.beginPath();
+    ctx.arc(x,y,34+pulse*10,0,TAU);
+    ctx.fill();
+    ctx.fillStyle="#6b3a1c";
+    ctx.fillRect(x-14,y-8+bob,28,16);
+    ctx.fillStyle="#8f5528";
+    ctx.fillRect(x-14,y-15+bob,28,8);
+    ctx.fillStyle="#ffd27a";
+    ctx.fillRect(x-14,y-3+bob,28,2.4);
+    ctx.fillRect(x-2,y-15+bob,4,23);
+    ctx.fillStyle="#2a1030";
+    ctx.beginPath();
+    ctx.arc(x,y+2+bob,2.6,0,TAU);
+    ctx.fill();
+    ctx.fillStyle="#ffd27a";
+    ctx.font="700 15px \"Trebuchet MS\",system-ui,sans-serif";
+    ctx.textAlign="center";
+    ctx.fillText("!",x,y-23+bob);
+    ctx.textAlign="start";
+  }
+}
+function chestArrow(x,y){
+  const cx=W/2,cy=H/2;
+  const dx=x-cx,dy=y-cy;
+  const m=Math.hypot(dx,dy)||1;
+  const ux=dx/m,uy=dy/m;
+  const inset=42;
+  const tx=(W/2-inset)/Math.max(.0001,Math.abs(ux));
+  const ty=(H/2-inset)/Math.max(.0001,Math.abs(uy));
+  const t=Math.min(tx,ty);
+  const ax=cx+ux*t,ay=cy+uy*t;
+  ctx.save();
+  ctx.translate(ax,ay);
+  ctx.rotate(Math.atan2(uy,ux));
+  ctx.fillStyle="rgba(255,210,122,.92)";
+  ctx.beginPath();
+  ctx.moveTo(10,0);
+  ctx.lineTo(-5,-8);
+  ctx.lineTo(-5,8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
 function drawEnemies(){
   for(const e of enemies){
     const x=e.x-cam.x,y=e.y-cam.y;
@@ -1245,6 +1401,12 @@ function drawVignette(){
   g.addColorStop(1,"rgba(0,0,0,.62)");
   ctx.fillStyle=g;
   ctx.fillRect(0,0,W,H);
+  if(hyperT>0){
+    ctx.globalAlpha=.12*Math.min(1,hyperT/2.5);
+    ctx.fillStyle="#ffb03a";
+    ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=1;
+  }
   const hpk=clamp(player.hp/player.maxHp,0,1);
   if(hpk<.35&&S.mode==="playing"){
     ctx.globalAlpha=(1-hpk)*.28*(.6+.4*Math.sin(S.time*6));
@@ -1258,7 +1420,7 @@ function drawVignette(){
 const hpwrap=$("hpwrap"),hpbar=$("hpbar"),xpwrap=$("xpwrap"),xpbar=$("xpbar");
 const timerEl=$("timer"),scoreEl=$("score"),killsEl=$("kills"),goldEl=$("gold");
 const levelEl=$("levelbadge"),bossbar=$("bossbar"),bossfill=$("bossfill"),bossname=$("bossname");
-const chips=$("chips"),hpnumEl=$("hpnum");
+const chips=$("chips"),hpnumEl=$("hpnum"),hyperEl=$("hyper");
 let chipsSig="";
 function updateHud(){
   const hpk=clamp(player.hp/player.maxHp,0,1);
@@ -1274,6 +1436,10 @@ function updateHud(){
   killsEl.textContent=String(S.kills);
   goldEl.textContent=String(S.gold);
   levelEl.textContent="LV "+S.level;
+  if(hyperT>0){
+    hyperEl.style.display="block";
+    hyperEl.textContent="TREASURE HAUL · "+Math.ceil(hyperT)+"s · "+hyperPicks+" hyper pick"+(hyperPicks===1?"":"s")+" left";
+  }else hyperEl.style.display="none";
   if(S.boss&&!S.boss.dead){
     bossbar.style.display="block";
     bossfill.style.width=(clamp(S.boss.hp/(S.bossMax||(S.bossMax=S.boss.hp)),0,1)*100)+"%";
@@ -1319,6 +1485,8 @@ function frame(now){
     updateEnemies(dt);
     updateProjectiles(dt);
     updatePickups(dt);
+    updateChests(dt);
+    updateHyper(dt);
     updateSpawner(dt);
     for(const t of texts)t.life-=dt;
     texts=texts.filter(t=>t.life>0);
@@ -1344,6 +1512,7 @@ function frame(now){
     drawBackground();
     drawFx();
     drawPickups();
+    drawChests();
     drawEnemies();
     drawPlayer();
     drawProjectiles();
