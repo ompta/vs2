@@ -183,6 +183,7 @@ function musicStep(dt){
 const WIN_TIME=15*60;          // survive 15 minutes
 const MAX_W=6,MAX_P=6;         // weapon / passive slots
 const BOSS_INTERVAL=60;        // a Lich King rises every minute
+const LAST_BOSS_TIME=13*60;    // the finale boss rises at 13:00, two minutes before the run ends
 const CHEST_LIFE=75;           // a boss chest sits on the ground this long
 const CHEST_XP_SCALE=.3;       // a chest's gems carry only 30% of their usual XP
 const HYPER_TIME=14,HYPER_MAX_PICKS=3,HYPER_XP=1.6,HYPER_MAG=1.7; // treasure haul window
@@ -241,6 +242,7 @@ const BOSSES=[
   {name:"☠ CATHEDRAL WORM",hp:2200,r:40,speed:52,dmg:30,color:"#2f6b58",eye:"#b7ffe0"},
   {name:"☠ THE PALE QUEEN",hp:3100,r:38,speed:66,dmg:34,color:"#8e9bb5",eye:"#ff3f6f"},
 ];
+const LAST_BOSS={name:"☠ THE LAST KING",hp:5200,r:56,speed:96,dmg:55,color:"#8a1f2c",eye:"#ffe9a8"};   // finale: bigger, faster, hits ~1.8x harder
 const CHARS=[
   {name:"Nosferatu",icon:"🧛",weapon:"aura",hp:118,perk:"+18 max HP · +25 pickup range",mod:{hp:1,mag:25}},
   {name:"Lupine",icon:"🐺",weapon:"whip",hp:100,perk:"+15% move speed",mod:{spd:1.15}},
@@ -313,7 +315,7 @@ function resetRun(ci){
   recompute();
   player.hp=player.maxHp;
   S={mode:"playing",time:0,score:0,kills:0,gold:0,shake:0,shakeX:0,shakeY:0,
-     spawnT:1.2,burstT:22,bossIdx:0,boss:null,pending:0,level:1,xp:0,need:xpNeedFor(1),charIdx:ci};
+     spawnT:1.2,burstT:22,bossIdx:0,boss:null,lastBossUp:false,pending:0,level:1,xp:0,need:xpNeedFor(1),charIdx:ci};
   enemies=[];bullets=[];foes=[];gems=[];coins=[];chests=[];parts=[];texts=[];rings=[];slashes=[];bolts=[];bursts=[];
   rockets=[];sparks=[];pops=[];
   hyperT=0;hyperPicks=0;flash=0;
@@ -357,6 +359,20 @@ function spawnBoss(){
   sfx("boss");
   return e;
 }
+function spawnLastBoss(){
+  const b=LAST_BOSS,scale=1+S.time/150;
+  const p=spawnPos();
+  const e={type:"boss",x:p.x,y:p.y,r:b.r,hp:b.hp*scale,speed:b.speed,dmg:b.dmg,
+    color:b.color,eye:b.eye,score:2400,xp:40,kx:0,ky:0,flash:0,dead:false,
+    wt:rand(0,TAU),atkT:1.6,name:b.name,last:true};
+  enemies.push(e);
+  S.boss=e;
+  S.bossMax=e.hp;
+  S.lastBossUp=true;
+  S.shake=22;
+  sfx("boss");
+  return e;
+}
 function killEnemy(e){
   if(e.dead)return;
   e.dead=true;deadFlag=true;
@@ -365,7 +381,8 @@ function killEnemy(e){
   if(e.type==="boss"){
     S.boss=null;
     sfx("boss");
-    addText(e.x,e.y-e.r-10,"☠ BANISHED","#ff7bd0",22);
+    if(e.last){S.shake=Math.max(S.shake,26);burstParts(e.x,e.y,"#ffe9a8",44,460);addText(e.x,e.y-e.r-10,"☠ THE LAST KING BANISHED","#ffe9a8",26);}
+    else addText(e.x,e.y-e.r-10,"☠ BANISHED","#ff7bd0",22);
     for(let i=0;i<14;i++)spawnGem(e.x+rand(-40,40),e.y+rand(-40,40),2.5);   // same 14 gems, half the XP (was 5 each)
     for(let i=0;i<6;i++)spawnCoin(e.x+rand(-50,50),e.y+rand(-50,50));
     spawnChest(e.x,e.y+e.r*.25);
@@ -673,12 +690,18 @@ function updateEnemies(dt){
       vy=dy/d+Math.sin(e.wt)*.55;
     }else if(e.type==="boss"){
       vx=dx/d;vy=dy/d;
+      if(e.last)e.wt+=dt*3;             // finale boss: its aura pulses (its speed 96 vs 52-66 is what makes it fast)
       e.atkT-=dt;
-      if(e.atkT<=0&&d<520){
-        e.atkT=2.6;
-        for(let i=0;i<10&&foes.length<MAX_FOES;i++){
-          const a=Math.atan2(dy,dx)+i*(TAU/10);
-          foes.push({x:e.x,y:e.y,vx:Math.cos(a)*205,vy:Math.sin(a)*205,r:9,dmg:e.dmg*.55,life:4,color:"#ff5fd0"});
+      if(e.atkT<=0&&d<(e.last?700:520)){
+        e.atkT=e.last?1.5:2.6;
+        const n=e.last?14:10,fs=e.last?255:205;
+        for(let i=0;i<n&&foes.length<MAX_FOES;i++){
+          const a=Math.atan2(dy,dx)+i*(TAU/n);
+          foes.push({x:e.x,y:e.y,vx:Math.cos(a)*fs,vy:Math.sin(a)*fs,r:e.last?11:9,dmg:e.dmg*(e.last?.8:.55),life:4,color:e.last?"#ffe9a8":"#ff5fd0"});
+        }
+        if(e.last)for(let i=0;i<6&&foes.length<MAX_FOES;i++){   // finale boss also fans shots straight at you
+          const a=Math.atan2(dy,dx)+(i-2.5)*.2;
+          foes.push({x:e.x,y:e.y,vx:Math.cos(a)*300,vy:Math.sin(a)*300,r:10,dmg:e.dmg*.6,life:3.4,color:"#ff5fd0"});
         }
         sfx("nova");
       }
@@ -860,7 +883,10 @@ function updateSpawner(dt){
     }
     S.shake=Math.max(S.shake,3);
   }
-  if(Math.floor(S.time/BOSS_INTERVAL)>Math.floor((S.time-dt)/BOSS_INTERVAL))spawnBoss();
+  if(Math.floor(S.time/BOSS_INTERVAL)>Math.floor((S.time-dt)/BOSS_INTERVAL)){
+    if(S.time>=LAST_BOSS_TIME){if(!S.lastBossUp)spawnLastBoss();}   // 13:00 takes the boss slot · no normal bosses after it
+    else spawnBoss();
+  }
 }
 
 /* ================= upgrades ================= */
@@ -1399,11 +1425,18 @@ function drawEnemies(){
     ctx.arc(x,y,e.r,0,TAU);
     ctx.fill();
     if(e.type==="boss"){
-      ctx.strokeStyle="rgba(255,95,208,.6)";
-      ctx.lineWidth=3;
+      ctx.strokeStyle=e.last?"rgba(255,233,168,.8)":"rgba(255,95,208,.6)";
+      ctx.lineWidth=e.last?5:3;
       ctx.beginPath();
-      ctx.arc(x,y,e.r+8,0,TAU);
+      ctx.arc(x,y,e.r+8+(e.last?Math.sin(e.wt*2)*7:0),0,TAU);
       ctx.stroke();
+      if(e.last){
+        ctx.strokeStyle="rgba(255,77,99,.55)";
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.arc(x,y,e.r+24,0,TAU);
+        ctx.stroke();
+      }
     }
     ctx.fillStyle=e.eye;
     const ex=e.r*.34,ey=-e.r*.18,er=Math.max(1.6,e.r*.16);
