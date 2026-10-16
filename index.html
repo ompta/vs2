@@ -185,7 +185,8 @@ const MAX_W=6,MAX_P=6;         // weapon / passive slots
 const BOSS_INTERVAL=60;        // a Lich King rises every minute
 const LAST_BOSS_TIME=13*60;    // the finale boss rises at 13:00, two minutes before the run ends
 const CHEST_LIFE=75;           // a boss chest sits on the ground this long
-const CHEST_XP_SCALE=.3;       // a chest's gems carry only 30% of their usual XP
+const CHEST_XP_SCALE=.15;       // chest XP halved again (30% of the old 4 -> 15%: 1.2 -> 0.6 each)
+const BOSS_XP_SCALE=.5;         // a slain boss's gems carry only half their usual XP (2.5 -> 1.25 each)
 const HYPER_TIME=14,HYPER_MAX_PICKS=3,HYPER_XP=1.6,HYPER_MAG=1.7; // treasure haul window
 const FW_COLORS=["#ffd27a","#ff8ed9","#ff5fd0","#9b4dff","#7de3ff","#ffe9a8"]; // chest fireworks shell palette
 
@@ -270,7 +271,9 @@ let enemies=[],bullets=[],foes=[],gems=[],coins=[],chests=[],parts=[],texts=[],r
 let rockets=[],sparks=[],pops=[];   // chest fireworks: shells, embers and shockwaves (sky layer)
 let keys={},deadFlag=false;
 const CELL=80,gmap=new Map();
-const MAX_ENEMIES=240,MAX_FOES=160;
+const MAX_ENEMIES=340,MAX_FOES=160;   // enemy cap raised from 240 so the denser waves actually land
+const SPAWN_DENSITY=1.75;             // every wave carries ~75% more enemies
+const ENEMY_XP_SCALE=.5;              // a slain enemy's gem carries only half its usual XP
 function gkey(cx,cy){return cx*100000+cy;}
 function buildGrid(){
   gmap.clear();
@@ -383,12 +386,12 @@ function killEnemy(e){
     sfx("boss");
     if(e.last){S.shake=Math.max(S.shake,26);burstParts(e.x,e.y,"#ffe9a8",44,460);addText(e.x,e.y-e.r-10,"☠ THE LAST KING BANISHED","#ffe9a8",26);}
     else addText(e.x,e.y-e.r-10,"☠ BANISHED","#ff7bd0",22);
-    for(let i=0;i<14;i++)spawnGem(e.x+rand(-40,40),e.y+rand(-40,40),2.5);   // same 14 gems, half the XP (was 5 each)
+    for(let i=0;i<14;i++)spawnGem(e.x+rand(-40,40),e.y+rand(-40,40),2.5*BOSS_XP_SCALE);   // 50% XP: 2.5 -> 1.25 each (35 -> 17.5 total)
     for(let i=0;i<6;i++)spawnCoin(e.x+rand(-50,50),e.y+rand(-50,50));
     spawnChest(e.x,e.y+e.r*.25);
     addText(e.x,e.y+e.r+16,"CHEST DROPPED · GO GET IT","#ffd27a",15);
   }else{
-    spawnGem(e.x,e.y,e.xp);
+    spawnGem(e.x,e.y,e.xp*ENEMY_XP_SCALE);   // half XP per kill (skeleton 1 -> 0.5 · wraith 4 -> 2 · brute 8 -> 4)
     if(Math.random()<.1)spawnCoin(e.x,e.y);
     sfx("hit");
   }
@@ -850,7 +853,7 @@ function openChest(c){
   burstParts(c.x,c.y,"#fff3c4",6+pw*4,120+pw*40);
   if(pw>=2)burstParts(c.x,c.y,"#ff9a3a",8+pw*4,260+pw*40);
   for(let i=0;i<10;i++)spawnCoin(c.x+rand(-84,84),c.y+rand(-84,84));
-  for(let i=0;i<8;i++)spawnGem(c.x+rand(-72,72),c.y+rand(-72,72),4*CHEST_XP_SCALE);   // 30% XP: 4 -> 1.2 each
+  for(let i=0;i<8;i++)spawnGem(c.x+rand(-72,72),c.y+rand(-72,72),4*CHEST_XP_SCALE);   // 15% of the old 4 XP: 1.2 -> 0.6 each
   hyperT=HYPER_TIME;
   hyperPicks=pw;
   S.pending+=pw;
@@ -864,7 +867,7 @@ function updateSpawner(dt){
   if(S.spawnT<=0){
     const every=clamp(1.15-S.time/1400,.2,1.15);
     S.spawnT=every;
-    const n=1+((S.time/110)|0);
+    const n=Math.ceil((1+((S.time/110)|0))*SPAWN_DENSITY);   // denser waves
     for(let i=0;i<n;i++){
       if(enemies.length>=MAX_ENEMIES)break;
       const p=spawnPos();
@@ -874,7 +877,7 @@ function updateSpawner(dt){
   S.burstT-=dt;
   if(S.burstT<=0){
     S.burstT=22;
-    const ring=1+((S.time/150)|0);
+    const ring=Math.ceil((1+((S.time/150)|0))*SPAWN_DENSITY);   // denser ring walls
     for(let i=0;i<ring;i++){
       if(enemies.length>=MAX_ENEMIES)break;
       const a=(TAU/ring)*i+rand(0,.4);
