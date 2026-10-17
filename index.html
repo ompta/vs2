@@ -190,6 +190,13 @@ const BOSS_XP_SCALE=.5;         // a slain boss's gems carry only half their usu
 const HYPER_TIME=14,HYPER_MAX_PICKS=3,HYPER_XP=1.6,HYPER_MAG=1.7; // treasure haul window
 const FW_COLORS=["#ffd27a","#ff8ed9","#ff5fd0","#9b4dff","#7de3ff","#ffe9a8"]; // chest fireworks shell palette
 
+// ---- boss tuning: knockback resistance + HP that grows as the run advances ----
+const ENEMY_HP_RAMP=230;           // normal enemies: hp * (1 + time/230)
+const BOSS_HP_RAMP=150;            // bosses ramp faster: hp * (1 + time/150)
+const LAST_BOSS_HP_MULT=10;        // finale boss carries 10x HP (5,200 base -> 52,000 before the time ramp)
+const BOSS_KNOCK_MULT=.35;         // normal bosses only take 35% of the knockback you would otherwise deal
+const LAST_BOSS_KNOCK_MULT=0;      // finale boss is rooted: no hit ever shifts it
+
 const WDEF={
   whip:{name:"Crescent Whip",icon:"🌙",kind:"arc",max:8,
     stats:l=>({cd:.95,dmg:12+5*l,range:150+10*l,arc:1.0+.05*l,count:1+(l>=4?1:0)+(l>=7?1:0),knock:70}),
@@ -341,20 +348,20 @@ function pickEnemyType(){
   return "skeleton";
 }
 function spawnEnemy(type,x,y){
-  const d=EDEF[type],scale=1+S.time/230;
+  const d=EDEF[type],scale=1+S.time/ENEMY_HP_RAMP;   // HP grows as the run advances
   const e={type,x,y,r:d.r,hp:d.hp*scale,speed:d.speed,dmg:d.dmg*(1+S.time/900),
-    color:d.color,eye:d.eye,score:d.score,xp:d.xp,kx:0,ky:0,flash:0,dead:false,
+    color:d.color,eye:d.eye,score:d.score,xp:d.xp,kx:0,ky:0,flash:0,dead:false,knockMul:1,
     wt:rand(0,TAU),atkT:rand(1.5,3.5),wander:rand(0,TAU)};
   enemies.push(e);
   return e;
 }
 function spawnBoss(){
-  const b=BOSSES[S.bossIdx%BOSSES.length],scale=1+S.time/150;
+  const b=BOSSES[S.bossIdx%BOSSES.length],scale=1+S.time/BOSS_HP_RAMP;   // later kings are beefier
   S.bossIdx++;
   const p=spawnPos();
   const e={type:"boss",x:p.x,y:p.y,r:b.r,hp:b.hp*scale,speed:b.speed,dmg:b.dmg,
     color:b.color,eye:b.eye,score:900,xp:40,kx:0,ky:0,flash:0,dead:false,
-    wt:rand(0,TAU),atkT:2.5,name:b.name};
+    wt:rand(0,TAU),atkT:2.5,name:b.name,knockMul:BOSS_KNOCK_MULT};   // less knockback than a normal enemy
   enemies.push(e);
   S.boss=e;
   S.bossMax=e.hp;
@@ -363,11 +370,11 @@ function spawnBoss(){
   return e;
 }
 function spawnLastBoss(){
-  const b=LAST_BOSS,scale=1+S.time/150;
+  const b=LAST_BOSS,scale=(1+S.time/BOSS_HP_RAMP)*LAST_BOSS_HP_MULT;   // 10x HP on top of the time ramp
   const p=spawnPos();
   const e={type:"boss",x:p.x,y:p.y,r:b.r,hp:b.hp*scale,speed:b.speed,dmg:b.dmg,
     color:b.color,eye:b.eye,score:2400,xp:40,kx:0,ky:0,flash:0,dead:false,
-    wt:rand(0,TAU),atkT:1.6,name:b.name,last:true};
+    wt:rand(0,TAU),atkT:1.6,name:b.name,last:true,knockMul:LAST_BOSS_KNOCK_MULT};   // rooted: never knocked back
   enemies.push(e);
   S.boss=e;
   S.bossMax=e.hp;
@@ -514,7 +521,8 @@ function drawFireworks(){
 }
 function damageEnemy(e,amt,kx,ky){
   e.hp-=amt;e.flash=.12;
-  e.kx+=kx;e.ky+=ky;
+  const km=e.knockMul!==undefined?e.knockMul:1;   // bosses shrug most of the push out
+  e.kx+=kx*km;e.ky+=ky*km;
   if(texts.length<70)addText(e.x+rand(-4,4),e.y-e.r-6,String(Math.round(amt)),"#ffd9a0",12);
   if(e.hp<=0)killEnemy(e);
 }
@@ -524,7 +532,8 @@ function hitPlayer(e){
   player.hp-=d;player.invuln=.55;S.shake=Math.max(S.shake,7);
   const a=Math.atan2(player.y-e.y,player.x-e.x);
   player.x+=Math.cos(a)*24;player.y+=Math.sin(a)*24;
-  e.x-=Math.cos(a)*26;e.y-=Math.sin(a)*26;
+  const push=26*(e.knockMul!==undefined?e.knockMul:1);   // contact shove obeys knockback resistance too
+  e.x-=Math.cos(a)*push;e.y-=Math.sin(a)*push;
   burstParts(player.x,player.y,"#ff4d63",9,150);
   sfx("hurt");
   if(player.hp<=0)gameOver();
