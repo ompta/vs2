@@ -745,7 +745,7 @@ function sfx(n){
   else if(n==="hyper"){tone(360,.55,"sine",.06,980);tone(900,.34,"triangle",.045,1300);}
   else if(n==="fw"){tone(150,.2,"sine",.03,-70);tone(760,.12,"triangle",.02,520);}
 }
-/* ---------- music: field.m4a while no boss is up, boss.m4a while one is ---------- */
+/* ---------- music: field.m4a while no boss is up, boss.m4a from the top while one is ---------- */
 const MUSIC_VOL=.55;
 let fieldMus=null,bossMus=null,musBad={field:false,boss:false},musKey="";
 function makeTrack(src,flag){   // one media element per track, played natively (file:// blocks Web Audio routing)
@@ -795,11 +795,17 @@ function stopAllMusic(){
   if(bossMus){try{bossMus.pause();}catch(e){}}
 }
 function restartMusic(){   // rewind both tracks so a fresh run starts at the top
-  for(const a of [fieldMus,bossMus])if(a){try{a.currentTime=0;}catch(e){}}
+  rewindTrack(fieldMus);rewindTrack(bossMus);
   musTry=-1e9;             // a run start is a user gesture: allow the very next attempt
   musFails.field=0;musFails.boss=0;   // fresh run gets a fresh retry budget
   syncMusic();
 }
+function rewindTrack(a){if(a){try{a.currentTime=0;}catch(e){}}}   // seek a media element back to the top of its file
+function bossThemeStart(){   // a king just rose: rewind the boss track so the theme always opens at bar one
+  rewindTrack(bossMus);
+  syncMusic();   // and hand off to the normal track switcher
+}
+
 
 
 let musT=0,musI=0;
@@ -1030,7 +1036,7 @@ function spawnBoss(){
   S.boss=e;
   S.bossMax=e.maxHp=e.hp;   // the bar and the phase gates both read this boss's own HP
   S.shake=10;
-  syncMusic();   // boss on screen -> boss.m4a
+  bossThemeStart();   // boss on screen -> boss.m4a from the top of the track
   sfx("boss");
   return e;
 }
@@ -1045,7 +1051,7 @@ function spawnLastBoss(){
   S.boss=e;
   S.bossMax=e.maxHp=e.hp;   // the bar and the phase gates both read this boss's own HP
   S.lastBossUp=true;
-  syncMusic();   // last king -> boss.m4a too
+  bossThemeStart();   // last king -> boss.m4a from the top too
   S.shake=22;
   sfx("boss");
   return e;
