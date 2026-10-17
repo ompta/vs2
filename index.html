@@ -107,7 +107,7 @@ body.touch #hyper{top:104px;font-size:14px}
   <button class="tbtn" id="tbtn-pause" aria-label="pause">⏸</button>
   <button class="tbtn" id="tbtn-mute" aria-label="mute">🔊</button>
 </div>
-<div id="menu" class="overlay"><div class="t">NIGHTFALL SURVIVORS</div><div class="row" id="charRow"></div><div class="sub">survive 15:00 · your weapons fire themselves · you only steer<br>slay a boss, walk onto its chest for a 1-3 pick treasure haul<br>pick a hunter: click a card or press 1 / 2 / 3</div></div>
+<div id="menu" class="overlay"><div class="t">NIGHTFALL SURVIVORS</div><div class="row" id="charRow"></div><div class="sub">survive 10:00 · your weapons fire themselves · you only steer<br>slay a boss, walk onto its chest for a 1-3 pick treasure haul<br>pick a hunter: click a card or press 1 / 2 / 3</div></div>
 <div id="levelup" class="overlay hidden"><div class="t">LEVEL UP</div><div id="choices"></div><div class="sub">pick one — click a card or press 1 / 2 / 3</div></div>
 <div id="end" class="overlay hidden"><div class="t" id="endTitle">YOU SURVIVED</div><div id="stats"></div><div id="shoprow"></div><div class="sub" id="endSub">spend your gold, then play again</div></div>
 <button class="abtn" id="againBtn">PLAY AGAIN</button>
@@ -777,10 +777,10 @@ function musicStep(dt){
 }
 
 /* ================= game data ================= */
-const WIN_TIME=15*60;          // survive 15 minutes
+const WIN_TIME=10*60;          // survive 10 minutes
 const MAX_W=6,MAX_P=6;         // weapon / passive slots
 const BOSS_INTERVAL=60;        // a Lich King rises every minute
-const LAST_BOSS_TIME=13*60;    // the finale boss rises at 13:00, two minutes before the run ends
+const LAST_BOSS_TIME=8*60;     // the finale boss rises at 8:00, two minutes before the run ends
 const CHEST_LIFE=75;           // a boss chest sits on the ground this long
 const CHEST_XP_SCALE=.15;       // chest XP halved again (30% of the old 4 -> 15%: 1.2 -> 0.6 each)
 const BOSS_XP_SCALE=.5;         // a slain boss's gems carry only half their usual XP (2.5 -> 1.25 each)
@@ -788,8 +788,8 @@ const HYPER_TIME=14,HYPER_MAX_PICKS=3,HYPER_XP=1.6,HYPER_MAG=1.7; // treasure ha
 const FW_COLORS=["#ffd27a","#ff8ed9","#ff5fd0","#9b4dff","#7de3ff","#ffe9a8"]; // chest fireworks shell palette
 
 // ---- boss tuning: knockback resistance + HP that grows as the run advances ----
-const ENEMY_HP_RAMP=230;           // normal enemies: hp * (1 + time/230)
-const BOSS_HP_RAMP=150;            // bosses ramp faster: hp * (1 + time/150)
+const ENEMY_HP_RAMP=153;           // normal enemies: hp * (1 + time/153)
+const BOSS_HP_RAMP=100;            // bosses ramp faster: hp * (1 + time/100)
 const LAST_BOSS_HP_MULT=5;         // finale boss carries 5x HP (5,200 base -> 26,000 before the time ramp)
 const BOSS_KNOCK_MULT=.35;         // normal bosses only take 35% of the knockback you would otherwise deal
 const LAST_BOSS_KNOCK_MULT=0;      // finale boss is rooted: no hit ever shifts it
@@ -836,11 +836,11 @@ const PDEF={
 
 const EDEF={
   skeleton:{name:"Skeleton",hp:26,speed:62,dmg:9,r:13,xp:1,score:10,color:"#8fa877",eye:"#d9ffb0",unlock:0,wt:3},
-  bat     :{name:"Bat",hp:12,speed:134,dmg:6,r:10,xp:1,score:8,color:"#8a5fc8",eye:"#ffd9ff",unlock:40,wt:2.4},
-  hound   :{name:"Hound",hp:34,speed:112,dmg:12,r:12,xp:2,score:20,color:"#a3543f",eye:"#ffe08a",unlock:110,wt:2},
-  spitter :{name:"Spitter",hp:46,speed:56,dmg:11,r:14,xp:3,score:35,color:"#4f9ecf",eye:"#c9f2ff",unlock:190,wt:1.6},
-  wraith  :{name:"Wraith",hp:74,speed:80,dmg:16,r:16,xp:4,score:55,color:"#6a4f9e",eye:"#ff6fd0",unlock:280,wt:1.4},
-  brute   :{name:"Brute",hp:215,speed:44,dmg:22,r:22,xp:8,score:90,color:"#3f5c33",eye:"#ffd24d",unlock:360,wt:1},
+  bat     :{name:"Bat",hp:12,speed:134,dmg:6,r:10,xp:1,score:8,color:"#8a5fc8",eye:"#ffd9ff",unlock:27,wt:2.4},
+  hound   :{name:"Hound",hp:34,speed:112,dmg:12,r:12,xp:2,score:20,color:"#a3543f",eye:"#ffe08a",unlock:73,wt:2},
+  spitter :{name:"Spitter",hp:46,speed:56,dmg:11,r:14,xp:3,score:35,color:"#4f9ecf",eye:"#c9f2ff",unlock:127,wt:1.6},
+  wraith  :{name:"Wraith",hp:74,speed:80,dmg:16,r:16,xp:4,score:55,color:"#6a4f9e",eye:"#ff6fd0",unlock:187,wt:1.4},
+  brute   :{name:"Brute",hp:215,speed:44,dmg:22,r:22,xp:8,score:90,color:"#3f5c33",eye:"#ffd24d",unlock:240,wt:1},
 };
 const BOSSES=[
   {name:"☠ THE GRAVE KING",hp:1500,r:34,speed:58,dmg:26,color:"#5b2a8a",eye:"#ff5fd0"},
@@ -886,7 +886,7 @@ const MAX_PROJ=420,MAX_SLASHES=90,MAX_RINGS=60,MAX_BOLTS=24,MAX_PARTS=260,MAX_TE
 const SPAWN_DENSITY=1.75;             // every wave carries ~75% more enemies
 const ENEMY_XP_SCALE=.5;              // a slain enemy's gem carries only half its usual XP
 /* ---- elites: a slice of every wave turns into a beefier, goldier variant ---- */
-const ELITE_MAX_CHANCE=.34;           // elite chance at 8:00 and after (ramps up from 0 with the clock)
+const ELITE_MAX_CHANCE=.34;           // elite chance at 5:20 and after (ramps up from 0 with the clock)
 const ELITE_HP_MULT=1.9;              // elite bodies carry almost twice the HP
 const ELITE_GOLD_MULT=4;              // and drop 4x the coins
 const ELITE_XP_MULT=2.2;              // plus 2.2x the XP in their gem
@@ -951,7 +951,7 @@ function pickEnemyType(){
   for(const k in EDEF){
     const d=EDEF[k];
     if(S.time<d.unlock)continue;
-    pool.push([k,d.wt*(1+(S.time-d.unlock)/260)]);
+    pool.push([k,d.wt*(1+(S.time-d.unlock)/173)]);
   }
   let sum=0;for(const p of pool)sum+=p[1];
   let r=Math.random()*sum;
@@ -960,11 +960,11 @@ function pickEnemyType(){
 }
 function spawnEnemy(type,x,y){
   const d=EDEF[type],scale=1+S.time/ENEMY_HP_RAMP;   // HP grows as the run advances
-  const e={type,x,y,r:d.r,hp:d.hp*scale,speed:d.speed,dmg:d.dmg*(1+S.time/900),
+  const e={type,x,y,r:d.r,hp:d.hp*scale,speed:d.speed,dmg:d.dmg*(1+S.time/600),
     color:d.color,eye:d.eye,score:d.score,xp:d.xp,kx:0,ky:0,flash:0,dead:false,knockMul:1,
     wt:rand(0,TAU),atkT:rand(1.5,3.5),wander:rand(0,TAU)};
-  /* elites ramp in with the clock: none before 1:30, ELITE_MAX_CHANCE from 8:00 on */
-  if(Math.random()<clamp((S.time-90)/390,0,1)*ELITE_MAX_CHANCE){
+  /* elites ramp in with the clock: none before 1:30, ELITE_MAX_CHANCE from 5:20 on */
+  if(Math.random()<clamp((S.time-90)/230,0,1)*ELITE_MAX_CHANCE){
     e.elite=true;
     e.r=d.r*ELITE_R_MULT;
     e.hp*=ELITE_HP_MULT;
@@ -1558,9 +1558,9 @@ function updateHyper(dt){
 function updateSpawner(dt){
   S.spawnT-=dt;
   if(S.spawnT<=0){
-    const every=clamp(1.15-S.time/1400,.2,1.15);
+    const every=clamp(1.15-S.time/933,.2,1.15);
     S.spawnT=every;
-    const n=Math.ceil((1+((S.time/110)|0))*SPAWN_DENSITY);   // denser waves
+    const n=Math.ceil((1+((S.time/73)|0))*SPAWN_DENSITY);   // denser waves
     for(let i=0;i<n;i++){
       if(enemies.length>=MAX_ENEMIES)break;
       const p=spawnPos();
@@ -1570,7 +1570,7 @@ function updateSpawner(dt){
   S.burstT-=dt;
   if(S.burstT<=0){
     S.burstT=22;
-    const ring=Math.ceil((1+((S.time/150)|0))*SPAWN_DENSITY);   // denser ring walls
+    const ring=Math.ceil((1+((S.time/100)|0))*SPAWN_DENSITY);   // denser ring walls
     for(let i=0;i<ring;i++){
       if(enemies.length>=MAX_ENEMIES)break;
       const a=(TAU/ring)*i+rand(0,.4);
@@ -1580,7 +1580,7 @@ function updateSpawner(dt){
     S.shake=Math.max(S.shake,3);
   }
   if(Math.floor(S.time/BOSS_INTERVAL)>Math.floor((S.time-dt)/BOSS_INTERVAL)){
-    if(S.time>=LAST_BOSS_TIME){if(!S.lastBossUp)spawnLastBoss();}   // 13:00 takes the boss slot · no normal bosses after it
+    if(S.time>=LAST_BOSS_TIME){if(!S.lastBossUp)spawnLastBoss();}   // 8:00 takes the boss slot · no normal bosses after it
     else spawnBoss();
   }
 }
@@ -1758,7 +1758,7 @@ function touchUI(){
   $("hint").textContent="drag anywhere to move · tap cards · ⏸ pause";
   $("mute").textContent="tap 🔊 to mute";
   const ms=$("menu").querySelector(".sub"),ls=$("levelup").querySelector(".sub");
-  if(ms)ms.innerHTML="survive 15:00 · your weapons fire themselves · you only steer<br>slay a boss, walk onto its chest for a 1-3 pick haul · tap a card to pick";
+  if(ms)ms.innerHTML="survive 10:00 · your weapons fire themselves · you only steer<br>slay a boss, walk onto its chest for a 1-3 pick haul · tap a card to pick";
   if(ls)ls.innerHTML="tap a card to pick one upgrade";
 }
 function togglePause(){
