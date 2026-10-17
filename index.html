@@ -52,6 +52,8 @@ body.touch #hyper{top:104px;font-size:14px}
 .card.hyper .nm{color:#ffd9a0}
 .card.hyper .lv{color:#ffc86a}
 .card.hyper .key{color:#ffe9b0}
+#paused{display:none}
+#paused.on{display:block;left:0;right:0;top:calc(50% - 60px);height:44px;text-align:center;font-size:15px;font-weight:800;letter-spacing:2px;color:#ffd9a0;background:rgba(8,5,16,.72);border:1px solid rgba(255,190,90,.55);border-radius:10px;box-shadow:0 0 22px rgba(0,0,0,.7)}
 .overlay{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
 .overlay.hidden{display:none}
 .overlay .t{font-size:min(46px,8vw);font-weight:800;letter-spacing:3px;color:#f0e6ff;text-shadow:0 0 22px rgba(150,80,255,.75);margin-bottom:14px}
@@ -98,7 +100,8 @@ body.touch #hyper{top:104px;font-size:14px}
   <div id="bossbar"><div id="bossname">☠ THE GRAVE KING</div><div id="bosswrap"><div id="bossfill"></div></div></div>
   <div id="chips"></div>
   <div id="hyper"></div>
-  <div id="hint">WASD / ARROWS move · P pause · M mute · 1 2 3 pick card</div>
+  <div id="hint">WASD / ARROWS move · P pause · M mute · 1 2 3 pick card · 1-5 buy in shop · ENTER retry · C change hunter</div>
+  <div id="paused" class="panel">PAUSED · press P to resume</div>
   <div id="mute">M mute</div>
   <div id="joy"><div id="joystick"></div></div>
   <button class="tbtn" id="tbtn-pause" aria-label="pause">⏸</button>
@@ -552,15 +555,16 @@ function sparkArt(color){
     g.beginPath();g.arc(0,0,7,0,TAU);g.fill();
   });
 }
-function glowArt(color,rad){
-  const key="q|"+color+"|"+rad;
-  return artGet(key,rad*2,g=>{
-    const gg=g.createRadialGradient(0,0,0,0,0,rad);
+const GLOW_R=96;   // one baked glow per colour, scaled at draw time instead of a sprite per radius
+function glowArt(color){
+  const key="q|"+color;
+  return artGet(key,GLOW_R*2,g=>{
+    const gg=g.createRadialGradient(0,0,0,0,0,GLOW_R);
     gg.addColorStop(0,"rgba(255,252,240,.9)");
     gg.addColorStop(.34,rgbaOf(color,.7));
     gg.addColorStop(1,rgbaOf(color,0));
     g.fillStyle=gg;
-    g.beginPath();g.arc(0,0,rad,0,TAU);g.fill();
+    g.beginPath();g.arc(0,0,GLOW_R,0,TAU);g.fill();
   });
 }
 function iconArt(icon,color,rad){
@@ -786,7 +790,7 @@ const FW_COLORS=["#ffd27a","#ff8ed9","#ff5fd0","#9b4dff","#7de3ff","#ffe9a8"]; /
 // ---- boss tuning: knockback resistance + HP that grows as the run advances ----
 const ENEMY_HP_RAMP=230;           // normal enemies: hp * (1 + time/230)
 const BOSS_HP_RAMP=150;            // bosses ramp faster: hp * (1 + time/150)
-const LAST_BOSS_HP_MULT=10;        // finale boss carries 10x HP (5,200 base -> 52,000 before the time ramp)
+const LAST_BOSS_HP_MULT=5;         // finale boss carries 5x HP (5,200 base -> 26,000 before the time ramp)
 const BOSS_KNOCK_MULT=.35;         // normal bosses only take 35% of the knockback you would otherwise deal
 const LAST_BOSS_KNOCK_MULT=0;      // finale boss is rooted: no hit ever shifts it
 
@@ -857,11 +861,16 @@ const SHOP=[
   {id:"pouch",name:"Coin Pouch",icon:"🧲",desc:"+35 pickup range",base:90},
 ];
 const META={gold:0,buys:{}};
+/* ---- the vault: permanent upgrades are capped per item and in total ---- */
+const SHOP_CAPS={vit:8,pow:6,boots:5,curse:4,pouch:4};   // how many times each upgrade can ever be bought
+const MAX_BUYS=24;                                       // total permanent purchases across everything
 try{
   const saved=localStorage.getItem("nightfall_meta_v1");
   if(saved){const o=JSON.parse(saved);META.gold=o.gold|0;META.buys=o.buys||{};}
 }catch(e){}
 function shopCost(s){return Math.round(s.base*Math.pow(1.65,META.buys[s.id]||0));}
+function totalBuys(){let n=0;for(const k in META.buys)n+=META.buys[k]|0;return n;}
+function canBuy(s){return (META.buys[s.id]||0)<(SHOP_CAPS[s.id]||99)&&totalBuys()<MAX_BUYS;}
 function saveMeta(){try{localStorage.setItem("nightfall_meta_v1",JSON.stringify(META));}catch(e){}}
 
 /* ================= state ================= */
@@ -871,9 +880,17 @@ let enemies=[],bullets=[],foes=[],gems=[],coins=[],chests=[],parts=[],texts=[],r
 let rockets=[],sparks=[],pops=[];   // chest fireworks: shells, embers and shockwaves (sky layer)
 let keys={},deadFlag=false;
 const CELL=80,gmap=new Map();
-const MAX_ENEMIES=340,MAX_FOES=160;   // enemy cap raised from 240 so the denser waves actually land
+const MAX_ENEMIES=340,MAX_FOES=240;   // enemy cap raised from 240 so the denser waves actually land
+/* ---- fx + pickup budgets: nothing on screen may grow unbounded ---- */
+const MAX_PROJ=420,MAX_SLASHES=90,MAX_RINGS=60,MAX_BOLTS=24,MAX_PARTS=260,MAX_TEXTS=70,MAX_PICKUPS=260;
 const SPAWN_DENSITY=1.75;             // every wave carries ~75% more enemies
 const ENEMY_XP_SCALE=.5;              // a slain enemy's gem carries only half its usual XP
+/* ---- elites: a slice of every wave turns into a beefier, goldier variant ---- */
+const ELITE_MAX_CHANCE=.34;           // elite chance at 8:00 and after (ramps up from 0 with the clock)
+const ELITE_HP_MULT=1.9;              // elite bodies carry almost twice the HP
+const ELITE_GOLD_MULT=4;              // and drop 4x the coins
+const ELITE_XP_MULT=2.2;              // plus 2.2x the XP in their gem
+const ELITE_R_MULT=1.18;              // and read a touch bigger on screen
 function gkey(cx,cy){return cx*100000+cy;}
 function buildGrid(){
   gmap.clear();
@@ -946,10 +963,21 @@ function spawnEnemy(type,x,y){
   const e={type,x,y,r:d.r,hp:d.hp*scale,speed:d.speed,dmg:d.dmg*(1+S.time/900),
     color:d.color,eye:d.eye,score:d.score,xp:d.xp,kx:0,ky:0,flash:0,dead:false,knockMul:1,
     wt:rand(0,TAU),atkT:rand(1.5,3.5),wander:rand(0,TAU)};
+  /* elites ramp in with the clock: none before 1:30, ELITE_MAX_CHANCE from 8:00 on */
+  if(Math.random()<clamp((S.time-90)/390,0,1)*ELITE_MAX_CHANCE){
+    e.elite=true;
+    e.r=d.r*ELITE_R_MULT;
+    e.hp*=ELITE_HP_MULT;
+    e.dmg*=1.25;
+    e.color=mixHex(d.color,"#ffd27a",.22);
+    e.eye=mixHex(d.eye,"#fff3c4",.4);
+    e.knockMul=.6;
+  }
   enemies.push(e);
   return e;
 }
 function spawnBoss(){
+  if(S.boss&&!S.boss.dead)return;   // one king at a time: never stack HP bars or bosses
   const b=BOSSES[S.bossIdx%BOSSES.length],scale=1+S.time/BOSS_HP_RAMP;   // later kings are beefier
   S.bossIdx++;
   const p=spawnPos();
@@ -958,21 +986,22 @@ function spawnBoss(){
     wt:rand(0,TAU),atkT:2.5,name:b.name,knockMul:BOSS_KNOCK_MULT};   // less knockback than a normal enemy
   enemies.push(e);
   S.boss=e;
-  S.bossMax=e.hp;
+  S.bossMax=e.maxHp=e.hp;   // the bar and the phase gates both read this boss's own HP
   S.shake=10;
   syncMusic();   // boss on screen -> boss.m4a
   sfx("boss");
   return e;
 }
 function spawnLastBoss(){
-  const b=LAST_BOSS,scale=(1+S.time/BOSS_HP_RAMP)*LAST_BOSS_HP_MULT;   // 10x HP on top of the time ramp
+  if(S.lastBossUp)return;   // the finale king rises exactly once
+  const b=LAST_BOSS,scale=(1+S.time/BOSS_HP_RAMP)*LAST_BOSS_HP_MULT;   // 5x HP on top of the time ramp
   const p=spawnPos();
   const e={type:"boss",x:p.x,y:p.y,r:b.r,hp:b.hp*scale,speed:b.speed,dmg:b.dmg,
     color:b.color,eye:b.eye,score:2400,xp:40,kx:0,ky:0,flash:0,dead:false,
     wt:rand(0,TAU),atkT:1.6,name:b.name,last:true,knockMul:LAST_BOSS_KNOCK_MULT};   // rooted: never knocked back
   enemies.push(e);
   S.boss=e;
-  S.bossMax=e.hp;
+  S.bossMax=e.maxHp=e.hp;   // the bar and the phase gates both read this boss's own HP
   S.lastBossUp=true;
   syncMusic();   // last king -> boss.m4a too
   S.shake=22;
@@ -982,10 +1011,10 @@ function spawnLastBoss(){
 function killEnemy(e){
   if(e.dead)return;
   e.dead=true;deadFlag=true;
-  S.kills++;S.score+=e.score;
-  burstParts(e.x,e.y,e.color,e.type==="boss"?30:9,e.type==="boss"?300:130);
+  S.kills++;S.score+=e.score*(e.elite?3:1);
+  burstParts(e.x,e.y,e.color,e.type==="boss"?30:e.elite?18:9,e.type==="boss"?300:e.elite?220:130);
   if(e.type==="boss"){
-    S.boss=null;
+    if(S.boss===e)S.boss=null;   // only the king the HUD is tracking clears the bar
     syncMusic();   // boss gone -> back to field.m4a
     sfx("boss");
     if(e.last){S.shake=Math.max(S.shake,26);burstParts(e.x,e.y,"#ffe9a8",44,460);addText(e.x,e.y-e.r-10,"☠ THE LAST KING BANISHED","#ffe9a8",26);}
@@ -994,6 +1023,12 @@ function killEnemy(e){
     for(let i=0;i<6;i++)spawnCoin(e.x+rand(-50,50),e.y+rand(-50,50));
     spawnChest(e.x,e.y+e.r*.25);
     addText(e.x,e.y+e.r+16,"CHEST DROPPED · GO GET IT","#ffd27a",15);
+    if(e.last)winGame();   // slaying the finale king wins the run outright
+  }else if(e.elite){
+    spawnGem(e.x,e.y,e.xp*ENEMY_XP_SCALE*ELITE_XP_MULT);
+    for(let i=0;i<ELITE_GOLD_MULT;i++)spawnCoin(e.x+rand(-18,18),e.y+rand(-18,18));
+    addText(e.x,e.y-e.r-22,"ELITE SLAIN","#ffd27a",13);
+    sfx("hit");
   }else{
     spawnGem(e.x,e.y,e.xp*ENEMY_XP_SCALE);   // half XP per kill (skeleton 1 -> 0.5 · wraith 4 -> 2 · brute 8 -> 4)
     if(Math.random()<.1)spawnCoin(e.x,e.y);
@@ -1002,14 +1037,16 @@ function killEnemy(e){
 }
 
 /* ================= fx + damage helpers ================= */
-function spawnGem(x,y,v){gems.push({x,y,v,life:GEM_LIFE,born:performance.now()});}
-function spawnCoin(x,y){coins.push({x,y,life:40,born:performance.now()});}
+function pickupFull(){return gems.length+coins.length+chests.length>=MAX_PICKUPS;}   // one shared pickup budget
+function spawnGem(x,y,v){if(pickupFull())return;gems.push({x,y,v,life:GEM_LIFE,born:performance.now()});}
+function spawnCoin(x,y){if(pickupFull())return;coins.push({x,y,life:40,born:performance.now()});}
 function spawnChest(x,y){
+  if(pickupFull())return;
   chests.push({x,y,r:17,life:CHEST_LIFE,born:performance.now(),anim:rand(0,TAU),picks:rollHaulPicks()});
 }
-function addText(x,y,str,color,size){texts.push({x,y,str,color,size,life:1});}
+function addText(x,y,str,color,size){if(texts.length>=MAX_TEXTS)return;texts.push({x,y,str,color,size,life:1});}
 function burstParts(x,y,color,n,spread){
-  if(parts.length>=260)return;
+  if(parts.length>=MAX_PARTS)return;
   for(let i=0;i<n;i++){
     const a=rand(0,TAU),s=rand(spread*.3,spread);
     parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,color,life:rand(.25,.6),r:rand(1.5,3.5)});
@@ -1119,7 +1156,7 @@ function damageEnemy(e,amt,kx,ky){
   e.hp-=amt;e.flash=.12;
   const km=e.knockMul!==undefined?e.knockMul:1;   // bosses shrug most of the push out
   e.kx+=kx*km;e.ky+=ky*km;
-  if(texts.length<70)addText(e.x+rand(-4,4),e.y-e.r-6,String(Math.round(amt)),"#ffd9a0",12);
+  addText(e.x+rand(-4,4),e.y-e.r-6,String(Math.round(amt)),"#ffd9a0",12);   // addText enforces MAX_TEXTS itself
   if(e.hp<=0)killEnemy(e);
 }
 function hitPlayer(e){
@@ -1161,6 +1198,16 @@ function nearestEnemy(x,y,maxR){
   });
   return best;
 }
+function pickTarget(x,y,maxR,taken){   // volley targeting: skip enemies this volley already claimed
+  let best=null,bd=maxR*maxR;
+  queryEnemies(x,y,maxR+40,e=>{
+    if(e.dead)return;
+    if(taken)for(const t of taken)if(t===e)return;
+    const d=dist2(x,y,e.x,e.y);
+    if(d<bd){bd=d;best=e;}
+  });
+  return best;
+}
 function fireWeapon(w,dt){
   const def=WDEF[w.id];
   const st=(w.evolved?def.evoStats:def.stats)(w.lvl);
@@ -1177,7 +1224,7 @@ function fireWeapon(w,dt){
     if(tgt)base=Math.atan2(tgt.y-player.y,tgt.x-player.x);
     for(let i=0;i<st.count;i++){
       const a=base+(i-(st.count-1)/2)*.55;
-      slashes.push({x:player.x,y:player.y,a,r:range,arc:st.arc,life:.2,max:.2,dmg,knock:st.knock});
+      if(slashes.length<MAX_SLASHES)slashes.push({x:player.x,y:player.y,a,r:range,arc:st.arc,life:.2,max:.2,dmg,knock:st.knock});
       const half=st.arc/2;
       queryEnemies(player.x,player.y,range+30,e=>{
         if(e.dead)return;
@@ -1191,7 +1238,7 @@ function fireWeapon(w,dt){
     sfx("swing");
   }else if(kind==="nova"){
     const R=st.radius*player.areaMul;
-    rings.push({x:player.x,y:player.y,r:R,life:.34,max:.34,color:"#ff3f6f"});
+    if(rings.length<MAX_RINGS)rings.push({x:player.x,y:player.y,r:R,life:.34,max:.34,color:"#ff3f6f"});
     queryEnemies(player.x,player.y,R+30,e=>{
       if(e.dead)return;
       if(dist2(player.x,player.y,e.x,e.y)>(R+e.r)*(R+e.r))return;
@@ -1203,12 +1250,13 @@ function fireWeapon(w,dt){
     /* handled continuously in updateWeapons */
   }else if(kind==="throw"){
     const n=st.count;
+    const taken=[];
     for(let i=0;i<n;i++){
-      const tgt=nearestEnemy(player.x,player.y,420);
+      const tgt=pickTarget(player.x,player.y,420,taken)||nearestEnemy(player.x,player.y,420);
       let a;
-      if(tgt)a=Math.atan2(tgt.y-player.y,tgt.x-player.x)+rand(-.25,.25);
+      if(tgt){taken.push(tgt);a=Math.atan2(tgt.y-player.y,tgt.x-player.x)+rand(-.25,.25);}
       else a=rand(0,TAU);
-      bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*380,vy:Math.sin(a)*380,
+      if(bullets.length<MAX_PROJ)bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*380,vy:Math.sin(a)*380,
         r:st.r*player.areaMul,dmg,pierce:st.pierce,knock:st.knock,life:1.6,spin:rand(0,TAU),
         rot:rand(6,12),icon:"⛏",color:"#cfd6e6"});
     }
@@ -1220,7 +1268,7 @@ function fireWeapon(w,dt){
     if(tgt)base=Math.atan2(tgt.y-player.y,tgt.x-player.x);
     for(let i=0;i<n;i++){
       const a=base+(i-(n-1)/2)*.16;
-      bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*st.speed,vy:Math.sin(a)*st.speed,
+      if(bullets.length<MAX_PROJ)bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*st.speed,vy:Math.sin(a)*st.speed,
         r:7,dmg,pierce:st.pierce,knock:26,life:1.5,spin:0,rot:0,icon:null,
         color:"#e8eefc",ang:a});
     }
@@ -1229,29 +1277,41 @@ function fireWeapon(w,dt){
     const n=st.count;
     for(let i=0;i<n;i++){
       const a=rand(0,TAU);
-      bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*st.speed*.6,vy:Math.sin(a)*st.speed*.6,
+      if(bullets.length<MAX_PROJ)bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*st.speed*.6,vy:Math.sin(a)*st.speed*.6,
         r:9,dmg,pierce:1,knock:20,life:2.4,spin:0,rot:0,icon:null,color:"#ff8a3a",
         homing:1,speed:st.speed,boom:st.boom*player.areaMul});
     }
     sfx("shoot");
   }else if(kind==="strike"){
     const n=st.count,R=st.radius*player.areaMul;
+    const taken=[];
     for(let i=0;i<n;i++){
-      const tgt=nearestEnemy(player.x,player.y,430);
+      const tgt=pickTarget(player.x,player.y,430,taken)||nearestEnemy(player.x,player.y,430);
+      if(tgt)taken.push(tgt);
       let tx,ty;
       if(tgt&&Math.random()<.75){tx=tgt.x+rand(-14,14);ty=tgt.y+rand(-14,14);}
       else{const a=rand(0,TAU),d=rand(60,330);tx=player.x+Math.cos(a)*d;ty=player.y+Math.sin(a)*d;}
-      bolts.push({x1:player.x+rand(-40,40),y1:player.y-260,x2:tx,y2:ty,life:.34,max:.34,R,dmg});
-      queryEnemies(tx,ty,R+20,e=>{
-        if(e.dead)return;
-        if(dist2(tx,ty,e.x,e.y)>(R+e.r)*(R+e.r))return;
-        const a=Math.atan2(e.y-ty,e.x-tx);
-        damageEnemy(e,dmg,Math.cos(a)*30,Math.sin(a)*30);
-      });
-      rings.push({x:tx,y:ty,r:R,life:.22,max:.22,color:"#9fe0ff"});
+      if(bolts.length<MAX_BOLTS)bolts.push({x1:player.x+rand(-40,40),y1:player.y-260,x2:tx,y2:ty,life:.34,max:.34,R,dmg,fuse:.16,hit:false});
+      if(rings.length<MAX_RINGS)rings.push({x:tx,y:ty,r:R,life:.22,max:.22,color:"#9fe0ff"});
     }
     S.shake=Math.max(S.shake,4);
     sfx("nova");
+  }
+}
+function updateStrikes(dt){   // lightning only hurts once the bolt has actually landed
+  for(const b of bolts){
+    if(b.hit||b.dmg===undefined)continue;
+    b.fuse-=dt;
+    if(b.fuse>0)continue;
+    b.hit=true;
+    const tx=b.x2,ty=b.y2,R=b.R;
+    queryEnemies(tx,ty,R+20,e=>{
+      if(e.dead)return;
+      if(dist2(tx,ty,e.x,e.y)>(R+e.r)*(R+e.r))return;
+      const a=Math.atan2(e.y-ty,e.x-tx);
+      damageEnemy(e,b.dmg,Math.cos(a)*30,Math.sin(a)*30);
+    });
+    burstParts(tx,ty,"#9fe0ff",5,110);
   }
 }
 function updateWeapons(dt){
@@ -1298,19 +1358,29 @@ function updateEnemies(dt){
       vy=dy/d+Math.sin(e.wt)*.55;
     }else if(e.type==="boss"){
       vx=dx/d;vy=dy/d;
-      if(e.last)e.wt+=dt*3;             // finale boss: its aura pulses (its speed 96 vs 52-66 is what makes it fast)
+      if(e.last){
+        e.wt+=dt*3;                     // finale boss: its aura pulses (its speed 96 vs 52-66 is what makes it fast)
+        const np=lastPhase(e);          // phase gates: raw HP, not DPS, drives the finale's escalation
+        if(np!==e.ph){
+          e.ph=np;
+          addText(e.x,e.y-e.r-16,"PHASE "+(np+1)+" · THE LAST KING","#ffe9a8",18);
+          S.shake=Math.max(S.shake,14);
+          sfx("nova");
+        }
+      }
       e.atkT-=dt;
+      const ph=e.last?(e.ph||0):0;
       if(e.atkT<=0&&d<(e.last?700:520)){
-        e.atkT=e.last?1.5:2.6;
-        const n=e.last?14:10,fs=e.last?255:205;
+        e.atkT=(e.last?1.5:2.6)*(1-ph*.18);                 // later phases cast faster
+        const n=(e.last?10+ph*3:10),fs=(e.last?235+ph*30:205);
         for(let i=0;i<n&&foes.length<MAX_FOES;i++){
           const a=Math.atan2(dy,dx)+i*(TAU/n);
           foes.push({x:e.x,y:e.y,vx:Math.cos(a)*fs,vy:Math.sin(a)*fs,r:e.last?11:9,dmg:e.dmg*(e.last?.8:.55),life:4,color:e.last?"#ffe9a8":"#ff5fd0"});
         }
-        if(e.last)for(let i=0;i<6&&foes.length<MAX_FOES;i++){   // finale boss also fans shots straight at you
-          const a=Math.atan2(dy,dx)+(i-2.5)*.2;
-          foes.push({x:e.x,y:e.y,vx:Math.cos(a)*300,vy:Math.sin(a)*300,r:10,dmg:e.dmg*.6,life:3.4,color:"#ff5fd0"});
-        }
+        if(e.last){const fan=6+ph*3;for(let i=0;i<fan&&foes.length<MAX_FOES;i++){   // finale boss also fans shots straight at you
+          const a=Math.atan2(dy,dx)+(i-(fan-1)/2)*.2;
+          foes.push({x:e.x,y:e.y,vx:Math.cos(a)*(300+ph*40),vy:Math.sin(a)*(300+ph*40),r:10,dmg:e.dmg*.6,life:3.4,color:"#ff5fd0"});
+        }}
         sfx("nova");
       }
     }else{
@@ -1332,11 +1402,29 @@ function updateEnemies(dt){
       }
     }
   }
+  /* enemy-to-enemy separation: dense waves shove instead of piling into one blob */
+  for(const e of enemies){
+    if(e.dead)continue;
+    let px=0,py=0;
+    queryEnemies(e.x,e.y,e.r+34,e2=>{
+      if(e2===e||e2.dead)return;
+      const ex=e.x-e2.x,ey=e.y-e2.y;
+      const min=e.r+e2.r;
+      const l2=ex*ex+ey*ey;
+      if(l2>=min*min||l2<1e-6)return;
+      const l=Math.sqrt(l2),k=(min-l)*.5/l;
+      px+=ex*k;py+=ey*k;
+    });
+    if(!px&&!py)continue;
+    const w=e.type==="boss"?.12:e.elite?.6:1;   // heavy bodies shove instead of being shoved
+    e.x+=px*w;e.y+=py*w;
+  }
   if(deadFlag){
     enemies=enemies.filter(e=>!e.dead);
     deadFlag=false;
   }
 }
+function lastPhase(e){const m=e.maxHp||e.hp;const k=e.hp/m;return k>.66?0:k>.33?1:2;}   // 0 · 1 · 2 as the finale king bleeds down
 function updateProjectiles(dt){
   for(const b of bullets){
     b.life-=dt;
@@ -1361,7 +1449,7 @@ function updateProjectiles(dt){
       });
       if(hit){
         b.life=0;
-        rings.push({x:b.x,y:b.y,r:b.boom,life:.3,max:.3,color:"#ff8a3a"});
+        if(rings.length<MAX_RINGS)rings.push({x:b.x,y:b.y,r:b.boom,life:.3,max:.3,color:"#ff8a3a"});
         S.shake=Math.max(S.shake,3);
         queryEnemies(b.x,b.y,b.boom+30,e=>{
           if(e.dead)return;
@@ -1452,8 +1540,8 @@ function openChest(c){
   addText(c.x,c.y-30,"TREASURE HAUL ×"+pw,"#ffd27a",16+pw*3);
   spawnBurst(c.x,c.y,pw);
   launchFireworks(c.x,c.y,pw);   // shells rise behind the action, bigger with every pick
-  for(let i=0;i<pw+1;i++)rings.push({x:c.x,y:c.y,r:30+i*24+pw*8,life:.55+i*.14,max:.55+i*.14,color:i%2?"#ff9a3a":"#ffd27a"});
-  rings.push({x:c.x,y:c.y,r:66+pw*14,life:1.15+pw*.12,max:1.15+pw*.12,color:"#ff9a3a"});
+  for(let i=0;i<pw+1&&rings.length<MAX_RINGS;i++)rings.push({x:c.x,y:c.y,r:30+i*24+pw*8,life:.55+i*.14,max:.55+i*.14,color:i%2?"#ff9a3a":"#ffd27a"});
+  if(rings.length<MAX_RINGS)rings.push({x:c.x,y:c.y,r:66+pw*14,life:1.15+pw*.12,max:1.15+pw*.12,color:"#ff9a3a"});
   burstParts(c.x,c.y,"#ffd27a",10+pw*7,180+pw*50);
   burstParts(c.x,c.y,"#fff3c4",6+pw*4,120+pw*40);
   if(pw>=2)burstParts(c.x,c.y,"#ff9a3a",8+pw*4,260+pw*40);
@@ -1499,7 +1587,7 @@ function updateSpawner(dt){
 
 /* ================= upgrades ================= */
 function wLevel(id){for(const w of player.weapons)if(w.id===id)return w.lvl;return 0;}
-function wCount(){let n=0;for(const w of player.weapons)if(!w.evolved)n++;return n;}
+function wCount(){let n=0;for(const w of player.weapons)if(w.lvl>0)n++;return n;}   // evolved weapons still own their slot
 function pCount(){let n=0;for(const k in player.pLv)if(player.pLv[k]>0)n++;return n;}
 function evoReady(w){
   if(w.evolved||w.lvl<6)return false;
@@ -1511,8 +1599,8 @@ function buildChoices(){
   for(const w of player.weapons){
     if(evoReady(w)){
       const def=WDEF[w.id];
-      out.push({type:"evo",id:w.id,icon:def.evoIcon,name:def.evoName,lv:"MAX · EVOLVE",
-        ds:`${def.name} Lv6 → ${def.evoName}: damage, area and cooldown upgraded.`});
+      out.push({type:"evo",id:w.id,icon:def.evoIcon,name:def.evoName,lv:`Lv ${w.lvl} · EVOLVE`,
+        ds:`${def.name} Lv${w.lvl} → ${def.evoName}: damage, area and cooldown upgraded.`});
     }
   }
   for(const w of player.weapons){
@@ -1545,8 +1633,8 @@ function hyperChoices(){
   for(const w of player.weapons){
     const def=WDEF[w.id];
     if(evoReady(w)){
-      evo.push({ord:0,ch:{type:"evo",id:w.id,icon:def.evoIcon,name:def.evoName,lv:"MAX · EVOLVE",
-        ds:`${def.name} Lv6 → ${def.evoName}: damage, area and cooldown upgraded.`}});
+      evo.push({ord:0,ch:{type:"evo",id:w.id,icon:def.evoIcon,name:def.evoName,lv:`Lv ${w.lvl} · EVOLVE`,
+        ds:`${def.name} Lv${w.lvl} → ${def.evoName}: damage, area and cooldown upgraded.`}});
       continue;
     }
     if(w.evolved||w.lvl>=def.max)continue;
@@ -1658,7 +1746,11 @@ addEventListener("keydown",e=>{
   if(e.key==="m"||e.key==="M")toggleMute();
   if(S.mode==="menu"&&(e.key==="1"||e.key==="2"||e.key==="3"))startRun(+e.key-1);
   if(S.mode==="levelup"&&(e.key==="1"||e.key==="2"||e.key==="3"))chooseIndex(+e.key-1);
-  if(S.mode==="over"||S.mode==="win"){if(e.key==="Enter")restart();}
+  if(S.mode==="over"||S.mode==="win"){
+    if(e.key==="Enter")restart();   // retry the hunter you just ran
+    if(e.key==="c"||e.key==="C")restartMenu();
+    if(e.key.length===1&&e.key>="1"&&e.key<="9"){const s=SHOP[+e.key-1];if(s)buyUpgrade(s);}
+  }
 });
 addEventListener("keyup",e=>{keys[e.key.length===1?e.key.toLowerCase():e.key]=false;});
 function touchUI(){
@@ -1737,6 +1829,12 @@ function movePlayer(dt){
   if(player.regen>0)player.hp=Math.min(player.maxHp,player.hp+player.regen*dt);
 }
 function restart(){
+  const ci=(S.charIdx===undefined||S.charIdx<0||S.charIdx>=CHARS.length)?0:S.charIdx;
+  $("end").classList.add("hidden");
+  $("againBtn").classList.remove("on");
+  startRun(ci);   // ENTER retries the hunter you just ran
+}
+function restartMenu(){
   $("end").classList.add("hidden");
   $("againBtn").classList.remove("on");
   $("menu").classList.remove("hidden");
@@ -1767,18 +1865,19 @@ function showEnd(title){
   const row=$("shoprow");
   row.innerHTML="";
   for(const s of SHOP){
-    const cost=shopCost(s),can=META.gold>=cost;
+    const cost=shopCost(s),can=META.gold>=cost&&canBuy(s);
     const d=document.createElement("div");
     d.className="shopcard"+(can?"":" off");
-    d.innerHTML=`<div class="ic">${s.icon}</div><div class="nm">${s.name}</div><div class="ds">${s.desc}</div><div class="cost">${can?cost:"need "+cost}</div>`;
+    d.innerHTML=`<div class="ic">${s.icon}</div><div class="nm">${s.name}</div><div class="ds">${s.desc}</div><div class="cost">${can?cost:(canBuy(s)?"need "+cost:"maxed")}</div>`;
     if(can)d.addEventListener("click",()=>buyUpgrade(s));
     row.appendChild(d);
   }
-  $("endSub").textContent="spend your gold on permanent upgrades, then play again";
+  $("endSub").textContent="press 1-5 to buy · ENTER retries the same hunter · C changes hunter";
   $("againBtn").classList.add("on");
   $("againBtn").textContent="PLAY AGAIN";
 }
 function buyUpgrade(s){
+  if(!canBuy(s))return;   // per-item cap + the vault's total budget
   const cost=shopCost(s);
   if(META.gold<cost)return;
   META.gold-=cost;
@@ -1899,9 +1998,8 @@ function drawBursts(){
     const e=1-k;                          // 0 → 1
     const x=b.x-cam.x,y=b.y-cam.y;
     const R=b.r*(.22+e*1.15);
-    const rad=Math.max(12,Math.round(R/6)*6);
     ctx.globalAlpha=.92*k;
-    artDrawS(glowArt("#ffd66e",rad),x,y,rad*2);
+    artDrawS(glowArt("#ffd66e"),x,y,R*2);   // one baked glow sprite scaled at draw time
     ctx.globalAlpha=1;
     const rays=6+b.power*4;
     ctx.lineCap="round";
@@ -1997,6 +2095,11 @@ function drawEnemies(){
     if(x<-70||y<-70||x>W+70||y>H+70)continue;
     const bob=e.type==="bat"?Math.sin(e.wt*3)*e.r*.18:0;
     artDraw(enemyArt(e),x,y+bob);
+    if(e.elite){                                   // elites read with a gold halo
+      ctx.strokeStyle="rgba(255,210,122,.75)";
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(x,y+bob,e.r+5+Math.sin(e.wt*2)*1.6,0,TAU);ctx.stroke();
+    }
     if(e.type!=="boss")continue;
     const wob=e.last?Math.sin(e.wt*2)*7:0;
     ctx.strokeStyle=e.last?"rgba(255,233,168,.8)":"rgba(255,95,208,.6)";
@@ -2011,7 +2114,7 @@ function drawEnemies(){
 function drawPlayer(){
   const x=player.x-cam.x,y=player.y-cam.y;
   const bob=Math.sin(player.anim)*2.2;
-  const orb=glowArt("#9fe0ff",20),orbE=glowArt("#ffd9a0",20);
+  const orb=glowArt("#9fe0ff"),orbE=glowArt("#ffd9a0");   // one baked glow per colour, scaled at draw time
   for(const w of player.weapons){
     if(w.id!=="tome")continue;
     const def=WDEF[w.id];
@@ -2155,6 +2258,7 @@ function frame(now){
     updateWeapons(dt);
     updateEnemies(dt);
     updateProjectiles(dt);
+    updateStrikes(dt);
     updatePickups(dt);
     updateChests(dt);
     updateHyper(dt);
