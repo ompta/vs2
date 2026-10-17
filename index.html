@@ -168,9 +168,46 @@ function sfx(n){
   else if(n==="hyper"){tone(360,.55,"sine",.06,980);tone(900,.34,"triangle",.045,1300);}
   else if(n==="fw"){tone(150,.2,"sine",.03,-70);tone(760,.12,"triangle",.02,520);}
 }
+/* ---------- music: field.m4a while no boss is up, boss.m4a while one is ---------- */
+const MUSIC_VOL=.55;
+let fieldMus=null,bossMus=null,musBad={field:false,boss:false},musKey="";
+function makeTrack(src,flag){   // one media element per track, played natively (file:// blocks Web Audio routing)
+  try{
+    const a=new Audio(src);
+    a.loop=true;a.preload="auto";a.volume=MUSIC_VOL;
+    a.addEventListener("error",()=>{musBad[flag]=true;});   // missing/undecodable file -> chiptune takes over
+    return a;
+  }catch(e){return null;}
+}
+fieldMus=makeTrack("field.m4a","field");bossMus=makeTrack("boss.m4a","boss");
+if(!fieldMus)musBad.field=true;
+if(!bossMus)musBad.boss=true;
+function bossUp(){return !!S&&!!S.boss&&!S.boss.dead;}   // same signal the boss HP bar uses
+function musBadNow(){return musKey==="boss"?musBad.boss:musBad.field;}
+function setMusic(k){
+  if(muted||paused)return;   // silence is owned by stopAllMusic
+  if(k===musKey)return;
+  musKey=k;
+  const want=k==="boss"?bossMus:fieldMus,other=k==="boss"?fieldMus:bossMus;
+  if(other){try{other.pause();}catch(e){}}
+  if(want&&!musBadNow()){try{want.play().catch(()=>{});}catch(e){}}
+}
+function syncMusic(){ setMusic(bossUp()?"boss":"field"); }
+function stopAllMusic(){
+  musKey="";   // forget the track so the next sync re-arms whichever one is wanted
+  if(fieldMus){try{fieldMus.pause();}catch(e){}}
+  if(bossMus){try{bossMus.pause();}catch(e){}}
+}
+function restartMusic(){   // rewind both tracks so a fresh run starts at the top
+  for(const a of [fieldMus,bossMus])if(a){try{a.currentTime=0;}catch(e){}}
+  syncMusic();
+}
+
+
 let musT=0,musI=0;
 function musicStep(dt){
   if(muted||!actx)return;
+  if(!musBadNow())return;   // a real .m4a owns the music bed; the chiptune is only the fallback
   musT-=dt;if(musT>0)return;
   musT=1.5;
   const root=[42,49,35,56][musI++%4];
@@ -366,6 +403,7 @@ function spawnBoss(){
   S.boss=e;
   S.bossMax=e.hp;
   S.shake=10;
+  syncMusic();   // boss on screen -> boss.m4a
   sfx("boss");
   return e;
 }
@@ -379,6 +417,7 @@ function spawnLastBoss(){
   S.boss=e;
   S.bossMax=e.hp;
   S.lastBossUp=true;
+  syncMusic();   // last king -> boss.m4a too
   S.shake=22;
   sfx("boss");
   return e;
@@ -390,6 +429,7 @@ function killEnemy(e){
   burstParts(e.x,e.y,e.color,e.type==="boss"?30:9,e.type==="boss"?300:130);
   if(e.type==="boss"){
     S.boss=null;
+    syncMusic();   // boss gone -> back to field.m4a
     sfx("boss");
     if(e.last){S.shake=Math.max(S.shake,26);burstParts(e.x,e.y,"#ffe9a8",44,460);addText(e.x,e.y-e.r-10,"☠ THE LAST KING BANISHED","#ffe9a8",26);}
     else addText(e.x,e.y-e.r-10,"☠ BANISHED","#ff7bd0",22);
@@ -1076,10 +1116,12 @@ function touchUI(){
 function togglePause(){
   if(S.mode!=="playing"&&S.mode!=="levelup")return;
   paused=!paused;
+  if(paused)stopAllMusic();else syncMusic();
   $("tbtn-pause").textContent=paused?"▶":"⏸";
 }
 function toggleMute(){
   muted=!muted;
+  if(muted)stopAllMusic();else syncMusic();
   $("mute").textContent=muted?"M muted":"M mute";
   $("tbtn-mute").textContent=muted?"🔇":"🔊";
 }
@@ -1149,6 +1191,7 @@ function startRun(ci){
   if(ci<0||ci>=CHARS.length)return;
   $("menu").classList.add("hidden");
   resetRun(ci);
+  restartMusic();   // rewind both tracks; the run opens on field.m4a
   $("timer").textContent="0:00";
 }
 function showEnd(title){
@@ -1709,6 +1752,7 @@ function frame(now){
     for(const b of bolts)b.life-=dt;
     bolts=bolts.filter(b=>b.life>0);
     if(S.time>=WIN_TIME)winGame();
+    syncMusic();   // keeps the track in sync with the boss state
     musicStep(dt);
   }
   if(S.mode==="playing"||S.mode==="levelup"||S.mode==="over"||S.mode==="win"){
@@ -1744,6 +1788,8 @@ S={mode:"menu"};
 buildMenuCards();
 $("menu").classList.remove("hidden");
 requestAnimationFrame(frame);
+syncMusic();   // field.m4a from the moment the game opens; boss.m4a whenever a boss is up
+
 </script>
 </body>
 </html>
