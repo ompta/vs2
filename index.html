@@ -1757,6 +1757,7 @@ function touchUI(){
   document.body.classList.add("touch");
   $("hint").textContent="drag anywhere to move · tap cards · ⏸ pause";
   $("mute").textContent="tap 🔊 to mute";
+  $("paused").textContent="PAUSED · tap ▶ to resume";   // the keyboard wording would lie to a finger
   const ms=$("menu").querySelector(".sub"),ls=$("levelup").querySelector(".sub");
   if(ms)ms.innerHTML="survive 10:00 · your weapons fire themselves · you only steer<br>slay a boss, walk onto its chest for a 1-3 pick haul · tap a card to pick";
   if(ls)ls.innerHTML="tap a card to pick one upgrade";
@@ -1764,6 +1765,7 @@ function touchUI(){
 function togglePause(){
   if(S.mode!=="playing"&&S.mode!=="levelup")return;
   paused=!paused;
+  if(paused)$("paused").classList.add("on");else $("paused").classList.remove("on");   // the banner is what proves the tap landed
   if(paused)stopAllMusic();else syncMusic();
   $("tbtn-pause").textContent=paused?"▶":"⏸";
 }
@@ -1785,12 +1787,19 @@ function joyPlace(x,y){
   joyKnob.style.transform="translate(-50%,-50%)";
 }
 function joyRelease(){joyBase=null;joyId=null;joyVec.x=0;joyVec.y=0;joyEl.style.display="none";joyKnob.style.transform="translate(-50%,-50%)";}
+const tbtnPause=$("tbtn-pause"),tbtnMute=$("tbtn-mute");
+function tapBtn(btn){if(btn===tbtnMute||btn.id==="tbtn-mute")toggleMute();else togglePause();}
 addEventListener("pointerdown",e=>{
+  const t=e.target;
+  if(t===tbtnPause||t===tbtnMute||t.id==="tbtn-pause"||t.id==="tbtn-mute"){   // the phone controls answer the tap themselves: they toggle, and never steer
+    if(e.pointerType!=="mouse"){touchMode=true;if(!document.body.classList.contains("touch"))touchUI();}
+    tapBtn(t);
+    return;
+  }
   if(e.pointerType==="mouse")return;
   touchMode=true;
   if(!document.body.classList.contains("touch"))touchUI();
-  const t=e.target;
-  if(t&&(t.tagName==="BUTTON"||t.classList.contains("tbtn")||t.classList.contains("card")||t.classList.contains("shopcard")))return;
+  if(t&&(t.tagName==="BUTTON"||t.classList.contains("card")||t.classList.contains("shopcard")))return;
   if(joyId!==null&&e.pointerId!==joyId)return;
   joyId=e.pointerId;
   joyPlace(e.clientX,e.clientY);
@@ -1806,6 +1815,8 @@ addEventListener("pointermove",e=>{
 });
 addEventListener("pointerup",e=>{if(joyId!==null&&e.pointerId===joyId)joyRelease();});
 addEventListener("pointercancel",e=>{if(joyId!==null&&e.pointerId===joyId)joyRelease();});
+function coarseDevice(){try{return matchMedia("(pointer: coarse)").matches||matchMedia("(hover: none)").matches;}catch(e){return false;}}
+if(coarseDevice())touchUI();   // a phone reports a coarse pointer before any tap fires, so ⏸ / 🔊 are already on screen when the first tap lands
 function readInput(){
   let ix=0,iy=0;
   if(keys.ArrowLeft||keys.a)ix-=1;
@@ -1843,6 +1854,8 @@ function restartMenu(){
 }
 function startRun(ci){
   if(ci<0||ci>=CHARS.length)return;
+  paused=false;
+  $("paused").classList.remove("on");   // a fresh run is never born paused
   $("menu").classList.add("hidden");
   resetRun(ci);
   restartMusic();   // rewind both tracks; the run opens on field.m4a
