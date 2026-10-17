@@ -708,8 +708,10 @@ const MUSIC_VOL=.55;
 let fieldMus=null,bossMus=null,musBad={field:false,boss:false},musKey="";
 function makeTrack(src,flag){   // one media element per track, played natively (file:// blocks Web Audio routing)
   try{
-    const a=new Audio(src);
-    a.loop=true;a.preload="auto";a.volume=MUSIC_VOL;
+    const a=new Audio();
+    a.preload="auto";            // set before src, otherwise the load algorithm already ran
+    a.src=src;
+    a.loop=true;a.volume=MUSIC_VOL;
     a.addEventListener("error",()=>{musBad[flag]=true;});   // missing/undecodable file -> chiptune takes over
     return a;
   }catch(e){return null;}
@@ -719,13 +721,30 @@ if(!fieldMus)musBad.field=true;
 if(!bossMus)musBad.boss=true;
 function bossUp(){return !!S&&!!S.boss&&!S.boss.dead;}   // same signal the boss HP bar uses
 function musBadNow(){return musKey==="boss"?musBad.boss:musBad.field;}
+function wantTrack(k){return k==="boss"?bossMus:fieldMus;}
+function rolling(a){return !!a&&!a.paused&&!a.ended;}     // did play() actually take the element up?
+let musTry=-1e9,musFails={field:0,boss:0};   // last play() stamp + consecutive refusals per track
+function armTrack(k){
+  const a=wantTrack(k);
+  if(!a)return;
+  musTry=performance.now();
+  try{
+    const p=a.play();
+    if(p)p.then(()=>{musFails[k]=0;}).catch((e)=>{if(++musFails[k]>=8)musBad[k]=true;console.log("music retry #"+musFails[k]+" on "+k+": "+(e&&e.message||"refused"));});   // refused -> retry, and after ~4s give the chiptune the bed
+  }catch(e){if(++musFails[k]>=8)musBad[k]=true;}
+}
 function setMusic(k){
   if(muted||paused)return;   // silence is owned by stopAllMusic
-  if(k===musKey)return;
+  const want=wantTrack(k);
+  if(k===musKey){
+    if(rolling(want))return;                              // already doing exactly what we want
+    if(performance.now()-musTry<500)return;               // wanted but not rolling: retry on a timer, not per frame
+  }
   musKey=k;
-  const want=k==="boss"?bossMus:fieldMus,other=k==="boss"?fieldMus:bossMus;
+  const other=wantTrack(k==="boss"?"field":"boss");
   if(other){try{other.pause();}catch(e){}}
-  if(want&&!musBadNow()){try{want.play().catch(()=>{});}catch(e){}}
+  if(!want||musBadNow())return;                            // no element or broken file -> chiptune owns the bed
+  armTrack(k);
 }
 function syncMusic(){ setMusic(bossUp()?"boss":"field"); }
 function stopAllMusic(){
@@ -735,6 +754,8 @@ function stopAllMusic(){
 }
 function restartMusic(){   // rewind both tracks so a fresh run starts at the top
   for(const a of [fieldMus,bossMus])if(a){try{a.currentTime=0;}catch(e){}}
+  musTry=-1e9;             // a run start is a user gesture: allow the very next attempt
+  musFails.field=0;musFails.boss=0;   // fresh run gets a fresh retry budget
   syncMusic();
 }
 
