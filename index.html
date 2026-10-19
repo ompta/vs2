@@ -915,6 +915,8 @@ const META={gold:0,buys:{}};
 /* ---- the vault: permanent upgrades are capped per item and in total ---- */
 const SHOP_CAPS={vit:8,pow:6,boots:5,curse:4,pouch:4};   // how many times each upgrade can ever be bought
 const MAX_BUYS=24;                                       // total permanent purchases across everything
+/* ---- run rewards: the coin haul a run gathers is worth double once it reaches the vault ---- */
+const RUN_GOLD_MULT=2;                // the run's coins count double toward the vault (the time bonus is NOT doubled)
 try{
   const saved=localStorage.getItem("nightfall_meta_v1");
   if(saved){const o=JSON.parse(saved);META.gold=o.gold|0;META.buys=o.buys||{};}
@@ -1944,12 +1946,13 @@ function showEnd(title){
   if(S.endTotal===undefined){
     const bonus=Math.floor(S.time/2);
     S.endBonus=bonus;
-    S.endTotal=S.gold+bonus;
+    S.endRun=S.gold*RUN_GOLD_MULT;   // only the run term is doubled
+    S.endTotal=S.endRun+bonus;
     S.endScore=S.score+bonus;
     META.gold+=S.endTotal;
     saveMeta();
   }
-  $("stats").innerHTML=`<div>Survived <b>${fmtTime(S.time)}</b></div><div>Level <b>${S.level}</b> · Kills <b>${S.kills}</b></div><div>Score <b>${S.endScore}</b></div><div>Gold earned <b>${S.endTotal}</b> (run ${S.gold} + time ${S.endBonus})</div><div>Vault gold <b>${META.gold}</b></div>`;
+  $("stats").innerHTML=`<div>Survived <b>${fmtTime(S.time)}</b></div><div>Level <b>${S.level}</b> · Kills <b>${S.kills}</b></div><div>Score <b>${S.endScore}</b></div><div>Gold earned <b>${S.endTotal}</b> (run ${S.endRun} + time ${S.endBonus})</div><div>Vault gold <b>${META.gold}</b></div>`;
   const row=$("shoprow");
   row.innerHTML="";
   for(const s of SHOP){
