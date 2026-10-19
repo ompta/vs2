@@ -840,34 +840,39 @@ const LAST_BOSS_HP_MULT=5;         // finale boss carries 5x HP (5,200 base -> 2
 const BOSS_KNOCK_MULT=.35;         // normal bosses only take 35% of the knockback you would otherwise deal
 const LAST_BOSS_KNOCK_MULT=0;      // finale boss is rooted: no hit ever shifts it
 
+/* weapon damage ladders: Lv1 keeps its old number, Lv8 lands on the tuned one,
+   and the levels in between are spread evenly. Evolved damage sits 20% above Lv8. */
+const wDmg=(l,a,b)=>Math.round(a+(b-a)*(l-1)/7);   // damage at level l, ramping Lv1=a -> Lv8=b
+const wEvo=b=>Math.round(b*1.2);                   // evolved damage = Lv8 damage x1.2
+
 const WDEF={
   whip:{name:"Crescent Whip",icon:"🌙",kind:"arc",max:8,
-    stats:l=>({cd:.95,dmg:12+5*l,range:150+10*l,arc:1.0+.05*l,count:1+(l>=4?1:0)+(l>=7?1:0),knock:70}),
-    evoStats:l=>({cd:.7,dmg:26+9*l,range:210+12*l,arc:1.5+.05*l,count:2+(l>=6?1:0),knock:150}),
+    stats:l=>({cd:.95,dmg:wDmg(l,17,42),range:150+10*l,arc:1.0+.05*l,count:1+(l>=4?1:0)+(l>=7?1:0),knock:70}),
+    evoStats:l=>({cd:.7,dmg:wEvo(42),range:210+12*l,arc:1.5+.05*l,count:2+(l>=6?1:0),knock:150}),
     evo:{p:"might",lvl:2},evoName:"Sanguine Scythe",evoIcon:"⚔️"},
   aura:{name:"Crimson Aura",icon:"🩸",kind:"nova",max:8,
-    stats:l=>({cd:2.6-.08*l,dmg:8+4*l,radius:82+11*l}),
-    evoStats:l=>({cd:1.5-.06*l,dmg:16+7*l,radius:130+15*l}),
+    stats:l=>({cd:2.6-.08*l,dmg:wDmg(l,12,32),radius:82+11*l}),
+    evoStats:l=>({cd:1.5-.06*l,dmg:wEvo(32),radius:130+15*l}),
     evo:{p:"haste",lvl:2},evoName:"Crimson Maw",evoIcon:"🌀"},
   tome:{name:"Grim Tome",icon:"📖",kind:"orbit",max:8,
-    stats:l=>({count:2+(l>>1),radius:76+7*l,dmg:9+4*l,spin:2.3}),
-    evoStats:l=>({count:4+(l>>1),radius:104+9*l,dmg:18+7*l,spin:3.1}),
+    stats:l=>({count:2+(l>>1),radius:76+7*l,dmg:wDmg(l,13,33),spin:2.3}),
+    evoStats:l=>({count:4+(l>>1),radius:104+9*l,dmg:wEvo(33),spin:3.1}),
     evo:{p:"growth",lvl:2},evoName:"Libram of Grief",evoIcon:"📚"},
   digger:{name:"Grave Digger",icon:"⛏️",kind:"throw",max:8,
-    stats:l=>({cd:1.35,dmg:22+8*l,count:1+(l>=5?1:0),knock:130,pierce:2+(l>>1),r:13+2*l}),
-    evoStats:l=>({cd:.95,dmg:44+14*l,count:2+(l>=6?1:0),knock:220,pierce:5+(l>>1),r:18+3*l}),
+    stats:l=>({cd:1.35,dmg:wDmg(l,30,69),count:1+(l>=5?1:0),knock:130,pierce:2+(l>>1),r:13+2*l}),
+    evoStats:l=>({cd:.95,dmg:wEvo(69),count:2+(l>=6?1:0),knock:220,pierce:5+(l>>1),r:18+3*l}),
     evo:{p:"growth",lvl:2},evoName:"Reaper's Cleaver",evoIcon:"⚒️"},
   stake:{name:"Silver Stake",icon:"🏹",kind:"shot",max:8,
-    stats:l=>({cd:.72,dmg:11+5*l,speed:520,pierce:1+(l>=3?1:0)+(l>=6?1:0),count:1+(l>=8?1:0)}),
-    evoStats:l=>({cd:.42,dmg:20+8*l,speed:680,pierce:3+(l>=5?2:0),count:2}),
+    stats:l=>({cd:.72,dmg:wDmg(l,16,41),speed:520,pierce:1+(l>=3?1:0)+(l>=6?1:0),count:1+(l>=8?1:0)}),
+    evoStats:l=>({cd:.42,dmg:wEvo(41),speed:680,pierce:3+(l>=5?2:0),count:2}),
     evo:{p:"haste",lvl:2},evoName:"Longbow of Dusk",evoIcon:"🎯"},
   ember:{name:"Ember Censer",icon:"🔥",kind:"homing",max:8,
-    stats:l=>({cd:1.5,dmg:16+6*l,speed:300,count:1+(l>=4?1:0),boom:60+8*l}),
-    evoStats:l=>({cd:1.05,dmg:30+11*l,speed:360,count:2+(l>=5?1:0),boom:100+12*l}),
+    stats:l=>({cd:1.5,dmg:wDmg(l,22,51),speed:300,count:1+(l>=4?1:0),boom:60+8*l}),
+    evoStats:l=>({cd:1.05,dmg:wEvo(51),speed:360,count:2+(l>=5?1:0),boom:100+12*l}),
     evo:{p:"might",lvl:2},evoName:"Hellfire Brazier",evoIcon:"☄️"},
   storm:{name:"Tempest Chime",icon:"⚡",kind:"strike",max:8,
-    stats:l=>({cd:2.2-.05*l,dmg:18+8*l,count:1+(l>=3?1:0)+(l>=6?1:0),radius:70+6*l}),
-    evoStats:l=>({cd:1.3-.04*l,dmg:34+13*l,count:3+(l>=5?2:0),radius:100+9*l}),
+    stats:l=>({cd:2.2-.05*l,dmg:wDmg(l,26,66),count:1+(l>=3?1:0)+(l>=6?1:0),radius:70+6*l}),
+    evoStats:l=>({cd:1.3-.04*l,dmg:wEvo(66),count:3+(l>=5?2:0),radius:100+9*l}),
     evo:{p:"growth",lvl:2},evoName:"Mother Tempest",evoIcon:"🌩️"},
 };
 const PDEF={
