@@ -833,7 +833,9 @@ const FW_COLORS=["#ffd27a","#ff8ed9","#ff5fd0","#9b4dff","#7de3ff","#ffe9a8"]; /
 
 // ---- boss tuning: knockback resistance + HP that grows as the run advances ----
 const ENEMY_HP_RAMP=153;           // normal enemies: hp * (1 + time/153)
-const BOSS_HP_RAMP=100;            // bosses ramp faster: hp * (1 + time/100)
+const BOSS_HP_STEP=1;              // normal bosses: HP scale steps +1.0 per king, first king lands at x1.0
+const BOSS_HP_MAX_MULT=7;          // ... and caps at x7.0 on the 7th king (the 8:00 slot is the finale)
+const BOSS_HP_RAMP=100;            // finale boss only: hp * (1 + time/100)
 const LAST_BOSS_HP_MULT=5;         // finale boss carries 5x HP (5,200 base -> 26,000 before the time ramp)
 const BOSS_KNOCK_MULT=.35;         // normal bosses only take 35% of the knockback you would otherwise deal
 const LAST_BOSS_KNOCK_MULT=0;      // finale boss is rooted: no hit ever shifts it
@@ -1026,7 +1028,7 @@ function spawnEnemy(type,x,y){
 }
 function spawnBoss(){
   if(S.boss&&!S.boss.dead)return;   // one king at a time: never stack HP bars or bosses
-  const b=BOSSES[S.bossIdx%BOSSES.length],scale=1+S.time/BOSS_HP_RAMP;   // later kings are beefier
+  const b=BOSSES[S.bossIdx%BOSSES.length],scale=Math.min(1+BOSS_HP_STEP*S.bossIdx,BOSS_HP_MAX_MULT);   // x1.0,x2.0...x7.0 by spawn count, not by clock
   S.bossIdx++;
   const p=spawnPos();
   const e={type:"boss",x:p.x,y:p.y,r:b.r,hp:b.hp*scale,speed:b.speed,dmg:b.dmg,
